@@ -1226,24 +1226,32 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let cameraConfig = cameraId;
+        let scanConfig = {
+            fps: 20,
+            qrbox: (width, height) => {
+                const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
+                const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
+                return { width: boxWidth, height: boxHeight };
+            }
+        };
+
         if (cameraId === "environment" || cameraId === "user") {
             cameraConfig = { facingMode: cameraId };
+            scanConfig.videoConstraints = {
+                facingMode: cameraId,
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 }
+            };
+        } else {
+            scanConfig.videoConstraints = {
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 }
+            };
         }
 
         html5QrcodeScanner.start(
             cameraConfig,
-            {
-                fps: 20,
-                videoConstraints: {
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 }
-                },
-                qrbox: (width, height) => {
-                    const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
-                    const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
-                    return { width: boxWidth, height: boxHeight };
-                }
-            },
+            scanConfig,
             (decodedText) => {
                 // QR Decoded successfully!
                 handleCheckIn(decodedText);
@@ -1405,24 +1413,32 @@ document.addEventListener("DOMContentLoaded", () => {
         activeScanners[slotId] = scanner;
 
         let cameraConfig = cameraId;
+        let slotScanConfig = {
+            fps: 20,
+            qrbox: (width, height) => {
+                const boxWidth = Math.max(180, Math.min(width * 0.8, 300));
+                const boxHeight = Math.max(100, Math.min(height * 0.5, 180));
+                return { width: boxWidth, height: boxHeight };
+            }
+        };
+
         if (cameraId === "environment" || cameraId === "user") {
             cameraConfig = { facingMode: cameraId };
+            slotScanConfig.videoConstraints = {
+                facingMode: cameraId,
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 }
+            };
+        } else {
+            slotScanConfig.videoConstraints = {
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 }
+            };
         }
 
         scanner.start(
             cameraConfig,
-            {
-                fps: 20,
-                videoConstraints: {
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 }
-                },
-                qrbox: (width, height) => {
-                    const boxWidth = Math.max(180, Math.min(width * 0.8, 300));
-                    const boxHeight = Math.max(100, Math.min(height * 0.5, 180));
-                    return { width: boxWidth, height: boxHeight };
-                }
-            },
+            slotScanConfig,
             (decodedText) => {
                 handleCheckIn(decodedText, slotId);
             },
