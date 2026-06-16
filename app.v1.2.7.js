@@ -1226,15 +1226,22 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let scanConfig = {
-            fps: 20,
+            fps: 25,
             qrbox: (width, height) => {
-                const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
-                const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
+                const boxWidth = Math.floor(width * 0.9);
+                const boxHeight = Math.floor(Math.min(height * 0.6, boxWidth));
                 return { width: boxWidth, height: boxHeight };
             }
         };
 
         const tryStart = (config) => {
+            if (typeof config === "string" && config !== "environment" && config !== "user") {
+                config = { deviceId: config };
+            }
+            if (typeof config === "object") {
+                config.width = { ideal: 1920, min: 640 };
+                config.height = { ideal: 1080, min: 480 };
+            }
             return html5QrcodeScanner.start(
                 config,
                 scanConfig,
@@ -1282,6 +1289,28 @@ document.addEventListener("DOMContentLoaded", () => {
         startPromise.then(() => {
             // Success! Permission is granted, reload cameras to get full labels
             loadCameras();
+            // Try to set zoom and focus for small barcodes
+            setTimeout(() => {
+                try {
+                    const videoEl = document.querySelector("#qr-reader video");
+                    if (videoEl && videoEl.srcObject) {
+                        const track = videoEl.srcObject.getVideoTracks()[0];
+                        const caps = track.getCapabilities();
+                        const constraints = { advanced: [] };
+                        let apply = false;
+                        if (caps.focusMode && caps.focusMode.includes('continuous')) {
+                            constraints.focusMode = 'continuous';
+                            apply = true;
+                        }
+                        if (caps.zoom) {
+                            const zoomVal = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0));
+                            constraints.advanced.push({ zoom: zoomVal });
+                            apply = true;
+                        }
+                        if (apply) track.applyConstraints(constraints);
+                    }
+                } catch(e){}
+            }, 1500);
         }).catch(err => {
             console.error("Error starting camera reader:", err);
             let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
@@ -1445,15 +1474,22 @@ document.addEventListener("DOMContentLoaded", () => {
         activeScanners[slotId] = scanner;
 
         let slotScanConfig = {
-            fps: 20,
+            fps: 25,
             qrbox: (width, height) => {
-                const boxWidth = Math.max(180, Math.min(width * 0.8, 300));
-                const boxHeight = Math.max(100, Math.min(height * 0.5, 180));
+                const boxWidth = Math.floor(width * 0.9);
+                const boxHeight = Math.floor(Math.min(height * 0.6, boxWidth));
                 return { width: boxWidth, height: boxHeight };
             }
         };
 
         const tryStartSlot = (config) => {
+            if (typeof config === "string" && config !== "environment" && config !== "user") {
+                config = { deviceId: config };
+            }
+            if (typeof config === "object") {
+                config.width = { ideal: 1920, min: 640 };
+                config.height = { ideal: 1080, min: 480 };
+            }
             return scanner.start(
                 config,
                 slotScanConfig,
@@ -1495,7 +1531,29 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         startPromise.then(() => {
+            
             if (selectEl) selectEl.removeAttribute("disabled");
+            setTimeout(() => {
+                try {
+                    const videoEl = document.querySelector(`#qr-reader-slot-${slotIndex} video`);
+                    if (videoEl && videoEl.srcObject) {
+                        const track = videoEl.srcObject.getVideoTracks()[0];
+                        const caps = track.getCapabilities();
+                        const constraints = { advanced: [] };
+                        let apply = false;
+                        if (caps.focusMode && caps.focusMode.includes('continuous')) {
+                            constraints.focusMode = 'continuous';
+                            apply = true;
+                        }
+                        if (caps.zoom) {
+                            const zoomVal = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0));
+                            constraints.advanced.push({ zoom: zoomVal });
+                            apply = true;
+                        }
+                        if (apply) track.applyConstraints(constraints);
+                    }
+                } catch(e){}
+            }, 1500);
         }).catch(err => {
             console.error(`Error starting slot ${slotId}:`, err);
             showToast("Lỗi Camera", `Không thể mở camera Cổng ${slotIndex}. Vui lòng đổi thiết bị khác trong danh sách.`, "error");
