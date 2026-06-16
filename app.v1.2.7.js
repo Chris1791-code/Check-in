@@ -1288,6 +1288,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Initialize list of cameras
     function loadCameras() {
+        if (typeof Html5Qrcode === "undefined") {
+            console.warn("Html5Qrcode library is not loaded. Camera scanning will be unavailable.");
+            cameraSelect.innerHTML = `<option value="">Thư viện Camera không khả dụng</option>`;
+            document.querySelectorAll(".slot-camera-select").forEach(select => {
+                select.innerHTML = `<option value="">Thư viện Camera không khả dụng</option>`;
+            });
+            return;
+        }
         Html5Qrcode.getCameras().then(cameras => {
             let options = [];
             options.push('<option value="environment">📷 Camera Sau (Mặc định)</option>');
@@ -1295,7 +1303,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             if (cameras && cameras.length > 0) {
                 cameras.forEach((cam, idx) => {
-                    options.push(`<option value="${cam.id}">${cam.label || `Thiết bị Cam ${idx + 1}`}</option>`);
+                    options.push(`<option value="${cam.id}">${cam.label || `Camera ${idx + 1}`}</option>`);
                 });
             }
             cameraSelect.innerHTML = options.join("");
@@ -1324,12 +1332,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
         }).catch(err => {
-            console.error("Error loading cameras:", err);
+            console.error("Camera loading error:", err);
+            
             // Fallback options in case getCameras fails or is blocked on load
-            let options = [];
-            options.push('<option value="environment">📷 Camera Sau (Mặc định)</option>');
-            options.push('<option value="user">🤳 Camera Trước (Mặc định)</option>');
-            cameraSelect.innerHTML = options.join("");
+            cameraSelect.innerHTML = `
+                <option value="environment">📷 Camera Sau (Mặc định)</option>
+                <option value="user">🤳 Camera Trước (Mặc định)</option>
+            `;
             
             const slotSelects = document.querySelectorAll(".slot-camera-select");
             slotSelects.forEach((select, idx) => {
@@ -1340,156 +1349,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
                 if (idx === 0) select.value = "environment";
                 if (idx === 1) select.value = "user";
-            });
-        });
-    }
-
-    function startScanning() {
-        const cameraPlaceholder = document.getElementById("scanner-placeholder");
-        const viewportWrapper = document.querySelector(".scanner-viewport-wrapper");
-        
-        cameraPlaceholder.classList.add("hide");
-        viewportWrapper.classList.add("active-scanning");
-
-        const selectedCameraId = cameraSelect.value;
-        if (!selectedCameraId) {
-            showToast("Lỗi camera", "Vui lòng chọn một thiết bị camera từ danh sách.", "error");
-            viewportWrapper.classList.remove("active-scanning");
-            cameraPlaceholder.classList.remove("hide");
-            return;
-        }
-
-        // Stop IP Stream scanner if active
-        if (ipStreamInterval) {
-            stopIpStreamScan();
-        }
-
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
-                initCameraScan(selectedCameraId);
-            });
-        } else {
-            initCameraScan(selectedCameraId);
-        }
-    }
-
-    function initCameraScan(cameraId) {
-        html5QrcodeScanner = new Html5Qrcode("qr-reader", {
-            formatsToSupport: [
-                Html5QrcodeSupportedFormats.QR_CODE,
-                Html5QrcodeSupportedFormats.CODE_128,
-                Html5QrcodeSupportedFormats.CODE_39,
-                Html5QrcodeSupportedFormats.CODE_93,
-                Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8
-            ],
-            experimentalFeatures: {
-                useBarCodeDetectorIfSupported: true
-            }
-        });
-        
-        let cameraConfig = cameraId;
-        if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = { facingMode: cameraId };
-        }
-
-        html5QrcodeScanner.start(
-            cameraConfig,
-            {
-                fps: 20,
-                videoConstraints: {
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 }
-                },
-                qrbox: (width, height) => {
-                    const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
-                    const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
-                    return { width: boxWidth, height: boxHeight };
-                }
-            },
-            (decodedText) => {
-                // QR Decoded successfully!
-                handleCheckIn(decodedText);
-            },
-            (errorMessage) => {
-                // Keep scanning silently
-            }
-        ).then(() => {
-            // Success! Permission is granted, reload cameras to get full labels
-            loadCameras();
-        }).catch(err => {
-            console.error("Error starting camera reader:", err);
-            showToast("Lỗi Camera", "Không thể bắt đầu luồng quét. Kiểm tra quyền camera.", "error");
-            stopScanning();
-        });
-    }
-
-    function stopScanning() {
-        const cameraPlaceholder = document.getElementById("scanner-placeholder");
-        const viewportWrapper = document.getElementById("single-camera-viewport");
-        
-        if (viewportWrapper) viewportWrapper.classList.remove("active-scanning");
-        if (cameraPlaceholder) cameraPlaceholder.classList.remove("hide");
-
-        // Clean out IP stream scanning too
-        stopIpStreamScan();
-
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
-                html5QrcodeScanner = null;
-            }).catch(err => {
-                console.error("Failed to stop scanner gracefully:", err);
-                html5QrcodeScanner = null;
-            });
-        }
-
-        // Also stop all multi-camera slots!
-        for (let i = 1; i <= 4; i++) {
-            stopSlotScanning(`slot-${i}`);
-        }
-    }
-
-    // Initialize list of cameras
-    function loadCameras() {
-        if (typeof Html5Qrcode === "undefined") {
-            console.warn("Html5Qrcode library is not loaded. Camera scanning will be unavailable.");
-            cameraSelect.innerHTML = `<option value="">Thư viện Camera không khả dụng</option>`;
-            document.querySelectorAll(".slot-camera-select").forEach(select => {
-                select.innerHTML = `<option value="">Thư viện Camera không khả dụng</option>`;
-            });
-            return;
-        }
-        Html5Qrcode.getCameras().then(cameras => {
-            if (cameras && cameras.length > 0) {
-                cameraSelect.innerHTML = cameras.map((cam, idx) => `<option value="${cam.id}">${cam.label || `Camera ${idx + 1}`}</option>`).join("");
-                
-                // Populate slot camera dropdowns
-                const slotSelects = document.querySelectorAll(".slot-camera-select");
-                slotSelects.forEach((select, idx) => {
-                    // Pre-select different cameras if possible to save user effort
-                    const selectedIdx = Math.min(idx, cameras.length - 1);
-                    select.innerHTML = `<option value="">Chọn Cam...</option>` + 
-                        cameras.map((cam, camIdx) => {
-                            const isSelected = (camIdx === selectedIdx) ? "selected" : "";
-                            return `<option value="${cam.id}" ${isSelected}>${cam.label || `Camera ${camIdx + 1}`}</option>`;
-                        }).join("");
-                });
-            } else {
-                cameraSelect.innerHTML = `<option value="">Không tìm thấy Camera</option>`;
-                showToast("Không tìm thấy Camera", "Thiết bị không có webcam. Hãy chọn 'HD Camera Ngoài' hoặc 'Kết Nối IP Cam' để sử dụng thiết bị thay thế.", "warning");
-                
-                // Clear slots
-                document.querySelectorAll(".slot-camera-select").forEach(select => {
-                    select.innerHTML = `<option value="">Không tìm thấy Cam</option>`;
-                });
-            }
-        }).catch(err => {
-            console.error("Camera loading error:", err);
-            cameraSelect.innerHTML = `<option value="">Lỗi cấp quyền Camera</option>`;
-            showToast("Quyền truy cập Camera bị chặn", "Hãy cấp quyền camera trong cài đặt trình duyệt hoặc sử dụng các giải pháp kết nối thay thế.", "warning");
-            
-            document.querySelectorAll(".slot-camera-select").forEach(select => {
-                select.innerHTML = `<option value="">Lỗi cấp quyền Cam</option>`;
             });
         });
     }
