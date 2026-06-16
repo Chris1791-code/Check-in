@@ -1225,7 +1225,21 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
         
-        let cameraConfig = cameraId;
+        let cameraConfig;
+        if (cameraId === "environment" || cameraId === "user") {
+            cameraConfig = {
+                facingMode: cameraId,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        } else {
+            cameraConfig = {
+                deviceId: { exact: cameraId },
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        }
+
         let scanConfig = {
             fps: 20,
             qrbox: (width, height) => {
@@ -1234,20 +1248,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 return { width: boxWidth, height: boxHeight };
             }
         };
-
-        if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = { facingMode: cameraId };
-            scanConfig.videoConstraints = {
-                facingMode: cameraId,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        } else {
-            scanConfig.videoConstraints = {
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        }
 
         html5QrcodeScanner.start(
             cameraConfig,
@@ -1264,7 +1264,19 @@ document.addEventListener("DOMContentLoaded", () => {
             loadCameras();
         }).catch(err => {
             console.error("Error starting camera reader:", err);
-            showToast("Lỗi Camera", "Không thể bắt đầu luồng quét. Kiểm tra quyền camera.", "error");
+            let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
+            const ua = navigator.userAgent.toLowerCase();
+            const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
+            const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
+            
+            if (isWebView) {
+                errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm ở góc trên hoặc bên dưới) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android) để sử dụng camera.";
+            } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+                errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong phần Cài đặt của trình duyệt.";
+            } else {
+                errMsg += " Vui lòng kiểm tra quyền camera hoặc thử chuyển sang thiết bị camera khác trong danh sách.";
+            }
+            showToast("Lỗi Camera", errMsg, "error");
             stopScanning();
         });
     }
@@ -1412,7 +1424,21 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         activeScanners[slotId] = scanner;
 
-        let cameraConfig = cameraId;
+        let cameraConfig;
+        if (cameraId === "environment" || cameraId === "user") {
+            cameraConfig = {
+                facingMode: cameraId,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        } else {
+            cameraConfig = {
+                deviceId: { exact: cameraId },
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        }
+
         let slotScanConfig = {
             fps: 20,
             qrbox: (width, height) => {
@@ -1421,20 +1447,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 return { width: boxWidth, height: boxHeight };
             }
         };
-
-        if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = { facingMode: cameraId };
-            slotScanConfig.videoConstraints = {
-                facingMode: cameraId,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        } else {
-            slotScanConfig.videoConstraints = {
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        }
 
         scanner.start(
             cameraConfig,
@@ -1447,7 +1459,15 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         ).catch(err => {
             console.error(`Error starting slot ${slotIndex} camera:`, err);
-            showToast("Lỗi Camera", `Không thể bắt đầu quét trên Cổng ${slotIndex}.`, "error");
+            let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
+            const ua = navigator.userAgent.toLowerCase();
+            const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
+            const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
+            
+            if (isWebView) {
+                errMsg += " Hãy mở link trong trình duyệt Safari (iPhone) hoặc Chrome (Android) để trình duyệt được cấp quyền camera.";
+            }
+            showToast("Lỗi Camera Cổng " + slotIndex, errMsg, "error");
             stopSlotScanning(slotId);
         });
     }
