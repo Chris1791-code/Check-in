@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Check-In - Hệ Thống Sự Kiện & Quét Vé Thông Minh</title>
+    
+    <!-- SEO Tags -->
+    <meta name="description" content="Hệ thống quản lý sự kiện, check-in quét mã QR tự động bằng camera, import danh sách Excel/CSV, tự sinh vé và gửi email tự động chuyên nghiệp.">
+    <meta name="keywords" content="QR Checkin, Quét mã QR, Quản lý sự kiện, Check in Excel, Gửi email tự động">
+    <meta name="author" content="Antigravity Team">
+    
+    <!-- Google Fonts - Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Remix Icons CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <!-- App Stylesheet -->
+    <link rel="stylesheet" href="styles.css?v=1.2.4">
+    
+    <!-- Third-party CDNs -->
+    <!-- SheetJS (Excel Parsing) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- QRCodeJS (QR Code Generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- HTML5-QRCode (Webcam Scanning) -->
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- JsBarcode (Barcode Generation) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- JSZip (Zipping QR Code Images) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- EmailJS (Actual Email Sending) -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body>
+    <!-- App Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- MAIN CONTAINER (SPA) -->
+    <div id="app" class="app-container">
+        
+        <!-- 1. LOGIN SCREEN -->
+        <div id="screen-login" class="screen active">
+            <div class="login-wrapper">
+                <div class="login-glass-card">
+                    <div class="login-header">
+                        <div class="app-logo-large">
+                            <div class="logo-icon-pulse">
+                                <i class="ri-qr-scan-2-line"></i>
+                            </div>
+                            <div class="logo-text-wrapper">
+                                <span class="logo-title">QR CHECK-IN</span>
+                                <span class="logo-subtitle">Sự kiện & Hội thảo Thông minh</span>
+                            </div>
+                        </div>
+                        <p class="login-desc">Hệ thống quét vé và phân quyền quản trị thông minh</p>
+                    </div>
+
+                    <form id="login-form" class="login-form">
+                        <div class="form-group">
+                            <label for="login-email"><i class="ri-mail-line"></i> Email đăng nhập</label>
+                            <input type="email" id="login-email" required placeholder="nhanvien@qrcheckin.com" value="admin@qrcheckin.com">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="login-password"><i class="ri-lock-password-line"></i> Mật khẩu</label>
+                            <div class="password-input-wrapper">
+                                <input type="password" id="login-password" required placeholder="••••••••" value="admin123">
+                                <button type="button" id="btn-toggle-password" class="btn-icon-plain">
+                                    <i class="ri-eye-line"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="login-helper">
+                            <label class="checkbox-container">
+                                <input type="checkbox" checked>
+                                <span class="checkmark"></span>
+                                Ghi nhớ đăng nhập
+                            </label>
+                            <a href="#" class="forgot-pass-link">Quên mật khẩu?</a>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block" id="btn-login-submit">
+                            <span>Đăng Nhập Hệ Thống</span>
+                            <i class="ri-arrow-right-line"></i>
+                        </button>
+                    </form>
+
+                    <div class="login-accounts-hint">
+                        <p class="hint-title"><i class="ri-information-line"></i> Tài khoản chạy thử nghiệm nhanh:</p>
+                        <div class="hint-badges">
+                            <button type="button" class="badge-account" data-email="admin@qrcheckin.com" data-pass="admin123">
+                                <span class="role admin">Admin</span> admin123
+                            </button>
+                            <button type="button" class="badge-account" data-email="manager@qrcheckin.com" data-pass="manager123">
+                                <span class="role manager">Manager</span> manager123
+                            </button>
+                            <button type="button" class="badge-account" data-email="user@qrcheckin.com" data-pass="user123">
+                                <span class="role user">User</span> user123
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. MAIN APP SCREEN (DASHBOARD LAYOUT) -->
+        <div id="screen-main" class="screen">
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <div class="brand-logo">
+                        <i class="ri-qr-scan-2-line"></i>
+                    </div>
+                    <div class="brand-text">
+                        <span class="brand-name">QR CHECK-IN</span>
+                        <span class="brand-tag">v1.2.0</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-user-card">
+                    <div class="avatar-wrapper">
+                        <div id="user-avatar" class="avatar-initials">AD</div>
+                        <span class="status-indicator-online"></span>
+                    </div>
+                    <div class="user-card-info">
+                        <h4 id="user-display-name">Nguyễn Văn Admin</h4>
+                        <span id="user-display-role" class="user-role-badge badge-admin">Quản trị viên</span>
+                    </div>
+                </div>
+
+                <nav class="sidebar-menu">
+                    <p class="menu-label">Tổng Quan</p>
+                    <button class="nav-item active" data-view="dashboard" id="nav-dashboard">
+                        <i class="ri-dashboard-3-line"></i>
+                        <span>Bảng Thống Kê</span>
+                    </button>
+
+                    <p class="menu-label">Hoạt Động</p>
+                    <button class="nav-item" data-view="scanner" id="nav-scanner">
+                        <i class="ri-camera-lens-line"></i>
+                        <span>Quét Mã Check-In</span>
+                        <span class="scanner-live-badge">Live</span>
+                    </button>
+
+                    <button class="nav-item" data-view="customers" id="nav-customers">
+                        <i class="ri-user-group-line"></i>
+                        <span>Khách Hàng</span>
+                    </button>
+
+                    <button class="nav-item" data-view="history" id="nav-history">
+                        <i class="ri-history-line"></i>
+                        <span>Lịch Sử Check-In</span>
+                    </button>
+
+                    <p class="menu-label" data-admin-only>Hệ Thống</p>
+                    <button class="nav-item" data-view="users" id="nav-users" data-admin-only>
+                        <i class="ri-admin-line"></i>
+                        <span>Phân Quyền User</span>
+                    </button>
+
+                    <button class="nav-item" data-view="emails" id="nav-emails" data-admin-only>
+                        <i class="ri-mail-send-line"></i>
+                        <span>Sandbox Email</span>
+                        <span id="email-outbox-count" class="badge-count">0</span>
+                    </button>
+
+                    <button class="nav-item" data-view="settings" id="nav-settings">
+                        <i class="ri-settings-4-line"></i>
+                        <span>Thiết Lập</span>
+                    </button>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <button id="btn-logout" class="btn btn-secondary btn-block">
+                        <i class="ri-logout-box-r-line"></i>
+                        <span>Đăng Xuất</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Work Area -->
+            <div class="main-layout">
+                <!-- Top Header -->
+                <header class="app-header">
+                    <div class="header-left">
+                        <button id="btn-toggle-sidebar" class="btn-icon">
+                            <i class="ri-menu-2-line"></i>
+                        </button>
+                        <h2 id="view-title" class="view-title">Bảng Thống Kê</h2>
+                    </div>
+
+                    <div class="header-right">
+                        <!-- Theme Toggle Button -->
+                        <button id="btn-theme-toggle" class="btn-icon" title="Chuyển đổi giao diện">
+                            <i class="ri-sun-line"></i>
+                        </button>
+
+                        <!-- In-app Notification Bell -->
+                        <div class="header-notification-bell">
+                            <button id="btn-notification-bell" class="btn-icon">
+                                <i class="ri-notification-3-line"></i>
+                                <span class="notification-dot pulse hide" id="bell-dot"></span>
+                            </button>
+                            <!-- Dropdown Activity Feed -->
+                            <div class="notification-dropdown" id="notification-dropdown">
+                                <div class="dropdown-header">
+                                    <h3>Nhật Ký Hoạt Động Mới</h3>
+                                    <button id="btn-clear-activity-feed" class="btn-text-action">Xóa tất cả</button>
+                                </div>
+                                <div class="dropdown-list" id="activity-feed-list">
+                                    <div class="feed-empty">Không có hoạt động mới nào.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Connection Sync Status Indicator -->
+                        <div class="header-sync-status hide" id="header-sync-indicator">
+                            <span class="sync-dot"></span>
+                            <span class="sync-text">Máy chủ LAN</span>
+                        </div>
+
+                        <!-- Current Time Display -->
+                        <div class="header-clock">
+                            <i class="ri-time-line"></i>
+                            <span id="header-clock-time">00:00:00</span>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Dynamic View Wrapper -->
+                <main class="content-body">
+                    
+                    <!-- A. DASHBOARD VIEW -->
+                    <section id="view-dashboard" class="view-section active">
+                        <!-- Thống Kê Đột Phá -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon bg-indigo">
+                                    <i class="ri-user-shared-line"></i>
+                                </div>
+                                <div class="stat-details">
+                                    <span class="stat-label">Tổng Khách Hàng</span>
+                                    <h3 id="stat-total-customers" class="stat-val">0</h3>
+                                    <span class="stat-trend trend-neutral"><i class="ri-bookmark-line"></i> Trong danh sách</span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <div class="stat-icon bg-emerald">
+                                    <i class="ri-checkbox-circle-line"></i>
+                                </div>
+                                <div class="stat-details">
+                                    <span class="stat-label">Đã Check-in</span>
+                                    <h3 id="stat-checked-in" class="stat-val">0</h3>
+                                    <span id="stat-checked-percentage" class="stat-trend trend-up">0%</span>
+                                </div>
+                            </div>
+
+                            <div class="stat-card">
+                                <div class="stat-icon bg-amber">
+                                    <i class="ri-hourglass-2-fill"></i>
+                                </div>
+                                <div class="stat-details">
+                                    <span class="stat-label">Chờ Check-in</span>
+                                    <h3 id="stat-pending" class="stat-val">0</h3>
+                                    <span id="stat-pending-percentage" class="stat-trend trend-down">0%</span>
+                                </div>
+                            </div>
+
+                            <div class="stat-card">
+                                <div class="stat-icon bg-crimson">
+                                    <i class="ri-user-star-line"></i>
+                                </div>
+                                <div class="stat-details">
+                                    <span class="stat-label">Học Sinh Có Chứng Chỉ</span>
+                                    <h3 id="stat-vip-checked" class="stat-val">0</h3>
+                                    <span class="stat-trend trend-up" id="stat-vip-ratio"><i class="ri-vip-crown-line"></i> Chứng chỉ</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Biểu đồ & Broadcast Sự kiện -->
+                        <div class="dashboard-double-panel">
+                            <!-- Tiến độ trực quan -->
+                            <div class="glass-panel">
+                                <div class="panel-header">
+                                    <h3><i class="ri-bar-chart-box-line text-indigo"></i> Tiến Độ Check-In</h3>
+                                    <span class="badge-status badge-info">Realtime</span>
+                                </div>
+                                <div class="panel-body flex-center flex-column">
+                                    <div class="radial-progress-container">
+                                        <svg class="radial-progress-svg" viewBox="0 0 100 100">
+                                            <circle class="circle-bg" cx="50" cy="50" r="42"></circle>
+                                            <circle id="radial-progress-bar" class="circle-progress" cx="50" cy="50" r="42"></circle>
+                                        </svg>
+                                        <div class="radial-progress-center">
+                                            <span class="percent-value" id="dashboard-progress-percent">0%</span>
+                                            <span class="percent-label">Hoàn thành</span>
+                                        </div>
+                                    </div>
+                                    <div class="progress-details-bar" style="width:100%; margin-top: 1.5rem;">
+                                        <div class="linear-stat-row">
+                                            <span>Thực tế check-in: <strong id="progress-text-actual">0/0</strong></span>
+                                        </div>
+                                        <div class="linear-progress-track">
+                                            <div id="linear-progress-bar" class="linear-progress-fill" style="width: 0%;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Phát sóng cập nhật (Broadcast Announcement) -->
+                            <div class="glass-panel">
+                                <div class="panel-header">
+                                    <h3><i class="ri-broadcast-line text-crimson"></i> Phát Sóng Thông Báo Sự Kiện</h3>
+                                    <span class="badge-status bg-crimson">Mới</span>
+                                </div>
+                                <div class="panel-body">
+                                    <p class="panel-desc">Gửi thông báo đẩy in-app và âm thanh thông điệp ngay lập tức đến toàn bộ thiết bị nhân viên và quản lý.</p>
+                                    
+                                    <form id="broadcast-form" class="broadcast-form">
+                                        <div class="form-group">
+                                            <label for="broadcast-title">Tiêu đề thông báo</label>
+                                            <input type="text" id="broadcast-title" placeholder="Ví dụ: Cập nhật lịch thuyết trình Hội trường A" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="broadcast-content">Nội dung chi tiết</label>
+                                            <textarea id="broadcast-content" rows="3" placeholder="Nhập tin nhắn cập nhật về sự kiện, điều chỉnh địa điểm..." required></textarea>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary" id="btn-broadcast-send">
+                                            <i class="ri-send-plane-fill"></i>
+                                            <span>Phát sóng thông báo đẩy</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nhật ký check-in gần đây (Live Feed) -->
+                        <div class="glass-panel mt-20">
+                            <div class="panel-header">
+                                <h3><i class="ri-bubble-chart-line text-emerald"></i> Nhật Ký Check-In Thời Gian Thực</h3>
+                                <button class="btn btn-secondary btn-sm" id="btn-quick-nav-scanner">
+                                    <i class="ri-camera-switch-line"></i> Quét mã mới
+                                </button>
+                            </div>
+                            <div class="panel-body">
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Học Sinh</th>
+                                                <th>Trường THPT</th>
+                                                <th>CC Tiếng Anh</th>
+                                                <th>Thời Gian</th>
+                                                <th>Địa Điểm</th>
+                                                <th>Nhân Viên</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="dashboard-recent-checkins">
+                                            <tr>
+                                                <td colspan="6" class="text-center text-muted">Chưa có ai check-in. Vui lòng chuyển sang tab Quét Mã để thực hiện.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- B. SCANNER VIEW (CAMERA CHECK-IN) -->
+                    <section id="view-scanner" class="view-section">
+                        <div class="scanner-layout">
+                            <!-- Left: Active Scanner Viewport -->
+                            <div class="scanner-viewport-panel glass-panel">
+                                <div class="panel-header justify-between">
+                                    <div class="flex-align-center gap-8">
+                                        <span class="live-pulse"></span>
+                                        <h3>Quét Mã QR Bằng Webcam</h3>
+                                    </div>
+                                    <div class="camera-controls flex-align-center gap-10">
+                                        <div class="scanner-mode-tabs" style="display: flex; background: rgba(255, 255, 255, 0.05); padding: 2px; border-radius: var(--radius-sm); border: 1px solid var(--border-glass); margin-right: 5px;">
+                                            <button type="button" class="btn-scanner-mode active" id="btn-mode-single" style="padding: 4px 8px; border-radius: var(--radius-xs); border: none; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--color-primary); color: white;">Đơn Cam</button>
+                                            <button type="button" class="btn-scanner-mode" id="btn-mode-multi" style="padding: 4px 8px; border-radius: var(--radius-xs); border: none; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-secondary);">Đa Cam (Grid)</button>
+                                        </div>
+                                        <button type="button" class="btn-icon btn-secondary btn-sm" id="btn-camera-help-guide" title="Hướng dẫn kết nối Camera ngoài" style="width: 32px; height: 32px;">
+                                            <i class="ri-question-line"></i>
+                                        </button>
+                                        <select id="camera-select" class="form-select select-sm">
+                                            <option value="">Đang tải danh sách Camera...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Single Camera Mode Viewport -->
+                                <div id="single-camera-viewport" class="scanner-viewport-wrapper">
+                                    <!-- Scanning Laser Effect -->
+                                    <div class="scanner-laser"></div>
+                                    
+                                    <!-- Webcam Target View -->
+                                    <div id="qr-reader" class="qr-reader-container"></div>
+                                    
+                                    <!-- Manual input or feedback overlay -->
+                                    <div id="scanner-result-overlay" class="scanner-result-overlay success hide">
+                                        <div class="overlay-content">
+                                            <div class="overlay-icon">
+                                                <i class="ri-checkbox-circle-fill"></i>
+                                            </div>
+                                            <h4 class="overlay-title">Thành Công!</h4>
+                                            <p class="overlay-text">Nguyễn Văn A</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="scanner-result-overlay-fail" class="scanner-result-overlay error hide">
+                                        <div class="overlay-content">
+                                            <div class="overlay-icon">
+                                                <i class="ri-close-circle-fill"></i>
+                                            </div>
+                                            <h4 class="overlay-title">Không Hợp Lệ!</h4>
+                                            <p class="overlay-text">Mã QR này không tồn tại trong hệ thống.</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- IP Camera Connection Sub-panel (Floating Card) -->
+                                    <div id="ip-stream-input-card" class="ip-stream-panel glass-panel hide">
+                                        <div class="panel-header justify-between">
+                                            <h4 class="flex-align-center gap-8"><i class="ri-global-line text-indigo"></i> Kết Nối IP Camera</h4>
+                                            <button type="button" class="btn-icon-plain" id="btn-close-ip-panel"><i class="ri-close-line"></i></button>
+                                        </div>
+                                        <p class="font-12 text-secondary mb-10">Nhập Snapshot URL từ ứng dụng camera (Ví dụ: IP Webcam trên điện thoại) để quét không dây qua Wi-Fi cục bộ.</p>
+                                        <div class="form-group mb-10">
+                                            <label for="ip-stream-url">Snapshot/Photo URL</label>
+                                            <input type="text" id="ip-stream-url" placeholder="Ví dụ: http://192.168.1.50:8080/shot.jpg" class="w-full">
+                                        </div>
+                                        <div class="flex-align-center gap-10 justify-end">
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-ip-stream">Hủy</button>
+                                            <button type="button" class="btn btn-primary btn-sm" id="btn-start-ip-stream">Kết nối & Quét</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="scanner-placeholder-overlay" id="scanner-placeholder">
+                                        <i class="ri-camera-off-line"></i>
+                                        <p class="placeholder-main-title" style="font-weight: 700; color: var(--text-primary);">Hệ Thống Camera Chưa Kích Hoạt</p>
+                                        <p class="font-12 text-muted mb-10" style="text-align: center;">Chọn một trong các phương thức quét dưới đây:</p>
+                                        
+                                        <div class="scanner-fallback-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 90%; max-width: 420px; padding: 10px 0;">
+                                            <button type="button" class="btn btn-primary btn-sm" id="btn-start-camera">
+                                                <i class="ri-play-fill"></i> Bật Webcam
+                                            </button>
+                                            <button type="button" class="btn btn-success btn-sm" id="btn-upload-qr-file">
+                                                <i class="ri-image-add-line"></i> Quét từ File Ảnh
+                                            </button>
+                                            <button type="button" class="btn btn-indigo btn-sm" id="btn-open-guide-modal">
+                                                <i class="ri-external-link-line"></i> HD Camera Ngoài
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-ip-stream">
+                                                <i class="ri-global-line"></i> Kết Nối IP Cam
+                                            </button>
+                                        </div>
+                                        
+                                        <input type="file" id="qr-file-input" accept="image/*" style="display: none;">
+                                    </div>
+                                </div>
+
+                                <!-- Multi-Camera Mode Viewport Grid (Hidden by default) -->
+                                <div id="multi-camera-viewport" class="multi-scanner-grid hide">
+                                    <!-- Slot 1 -->
+                                    <div class="multi-cam-slot" id="cam-slot-1">
+                                        <div class="slot-header">
+                                            <span class="slot-title"><span class="slot-pulse"></span> Cổng 1</span>
+                                            <div class="flex-align-center gap-5">
+                                                <select class="form-select select-xs slot-camera-select" data-slot="slot-1" style="max-width: 110px; font-size: 11px; padding: 2px 5px; height: auto;">
+                                                    <option value="">Chọn Cam...</option>
+                                                </select>
+                                                <button type="button" class="btn btn-danger btn-xs btn-stop-slot hide" data-slot="slot-1" style="padding: 2px 5px; font-size: 10px;"><i class="ri-stop-mini-fill"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="slot-viewport-wrapper">
+                                            <div class="scanner-laser"></div>
+                                            <div id="qr-reader-slot-1" class="qr-reader-container"></div>
+                                            
+                                            <div class="scanner-result-overlay success hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-checkbox-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Thành Công!</div>
+                                                    <p class="overlay-text" style="font-size: 12px; margin-top: 2px;">--</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-result-overlay error hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-close-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Không Hợp Lệ!</div>
+                                                    <p class="overlay-text" style="font-size: 11px; margin-top: 2px;">Vé không tồn tại</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-placeholder-overlay">
+                                                <i class="ri-camera-off-line" style="font-size: 28px;"></i>
+                                                <button type="button" class="btn btn-primary btn-xs btn-start-slot" data-slot="slot-1" style="padding: 3px 8px; font-size: 11px; margin-top: 5px;">Bật Quét</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slot 2 -->
+                                    <div class="multi-cam-slot" id="cam-slot-2">
+                                        <div class="slot-header">
+                                            <span class="slot-title"><span class="slot-pulse"></span> Cổng 2</span>
+                                            <div class="flex-align-center gap-5">
+                                                <select class="form-select select-xs slot-camera-select" data-slot="slot-2" style="max-width: 110px; font-size: 11px; padding: 2px 5px; height: auto;">
+                                                    <option value="">Chọn Cam...</option>
+                                                </select>
+                                                <button type="button" class="btn btn-danger btn-xs btn-stop-slot hide" data-slot="slot-2" style="padding: 2px 5px; font-size: 10px;"><i class="ri-stop-mini-fill"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="slot-viewport-wrapper">
+                                            <div class="scanner-laser"></div>
+                                            <div id="qr-reader-slot-2" class="qr-reader-container"></div>
+                                            
+                                            <div class="scanner-result-overlay success hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-checkbox-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Thành Công!</div>
+                                                    <p class="overlay-text" style="font-size: 12px; margin-top: 2px;">--</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-result-overlay error hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-close-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Không Hợp Lệ!</div>
+                                                    <p class="overlay-text" style="font-size: 11px; margin-top: 2px;">Vé không tồn tại</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-placeholder-overlay">
+                                                <i class="ri-camera-off-line" style="font-size: 28px;"></i>
+                                                <button type="button" class="btn btn-primary btn-xs btn-start-slot" data-slot="slot-2" style="padding: 3px 8px; font-size: 11px; margin-top: 5px;">Bật Quét</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slot 3 -->
+                                    <div class="multi-cam-slot" id="cam-slot-3">
+                                        <div class="slot-header">
+                                            <span class="slot-title"><span class="slot-pulse"></span> Cổng 3</span>
+                                            <div class="flex-align-center gap-5">
+                                                <select class="form-select select-xs slot-camera-select" data-slot="slot-3" style="max-width: 110px; font-size: 11px; padding: 2px 5px; height: auto;">
+                                                    <option value="">Chọn Cam...</option>
+                                                </select>
+                                                <button type="button" class="btn btn-danger btn-xs btn-stop-slot hide" data-slot="slot-3" style="padding: 2px 5px; font-size: 10px;"><i class="ri-stop-mini-fill"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="slot-viewport-wrapper">
+                                            <div class="scanner-laser"></div>
+                                            <div id="qr-reader-slot-3" class="qr-reader-container"></div>
+                                            
+                                            <div class="scanner-result-overlay success hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-checkbox-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Thành Công!</div>
+                                                    <p class="overlay-text" style="font-size: 12px; margin-top: 2px;">--</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-result-overlay error hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-close-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Không Hợp Lệ!</div>
+                                                    <p class="overlay-text" style="font-size: 11px; margin-top: 2px;">Vé không tồn tại</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-placeholder-overlay">
+                                                <i class="ri-camera-off-line" style="font-size: 28px;"></i>
+                                                <button type="button" class="btn btn-primary btn-xs btn-start-slot" data-slot="slot-3" style="padding: 3px 8px; font-size: 11px; margin-top: 5px;">Bật Quét</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slot 4 -->
+                                    <div class="multi-cam-slot" id="cam-slot-4">
+                                        <div class="slot-header">
+                                            <span class="slot-title"><span class="slot-pulse"></span> Cổng 4</span>
+                                            <div class="flex-align-center gap-5">
+                                                <select class="form-select select-xs slot-camera-select" data-slot="slot-4" style="max-width: 110px; font-size: 11px; padding: 2px 5px; height: auto;">
+                                                    <option value="">Chọn Cam...</option>
+                                                </select>
+                                                <button type="button" class="btn btn-danger btn-xs btn-stop-slot hide" data-slot="slot-4" style="padding: 2px 5px; font-size: 10px;"><i class="ri-stop-mini-fill"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="slot-viewport-wrapper">
+                                            <div class="scanner-laser"></div>
+                                            <div id="qr-reader-slot-4" class="qr-reader-container"></div>
+                                            
+                                            <div class="scanner-result-overlay success hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-checkbox-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Thành Công!</div>
+                                                    <p class="overlay-text" style="font-size: 12px; margin-top: 2px;">--</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-result-overlay error hide">
+                                                <div class="overlay-content">
+                                                    <div class="overlay-icon" style="font-size: 36px; margin-bottom: 5px;"><i class="ri-close-circle-fill"></i></div>
+                                                    <div class="overlay-title" style="font-size: 16px;">Không Hợp Lệ!</div>
+                                                    <p class="overlay-text" style="font-size: 11px; margin-top: 2px;">Vé không tồn tại</p>
+                                                </div>
+                                            </div>
+                                            <div class="scanner-placeholder-overlay">
+                                                <i class="ri-camera-off-line" style="font-size: 28px;"></i>
+                                                <button type="button" class="btn btn-primary btn-xs btn-start-slot" data-slot="slot-4" style="padding: 3px 8px; font-size: 11px; margin-top: 5px;">Bật Quét</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                <div class="scanner-viewport-footer justify-between">
+                                    <button class="btn btn-secondary btn-sm" id="btn-stop-camera">
+                                        <i class="ri-stop-mini-fill"></i> Tắt Camera
+                                    </button>
+                                    <div class="location-select-wrap">
+                                        <label for="scanner-location"><i class="ri-map-pin-line"></i> Vị trí: </label>
+                                        <select id="scanner-location" class="form-select select-sm inline-select">
+                                            <!-- Bổ sung bằng Javascript -->
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Scanner Manual Input & Quick Log -->
+                            <div class="scanner-info-panel">
+                                <!-- Manual Code Input -->
+                                <div class="glass-panel mb-20">
+                                    <div class="panel-header">
+                                        <h3><i class="ri-keyboard-line text-indigo"></i> Check-In Thủ Công</h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <p class="panel-desc">Nếu không thể quét camera, bạn có thể nhập Mã Vé (ID Khách hàng) để check-in trực tiếp.</p>
+                                        <form id="manual-checkin-form" class="manual-checkin-form">
+                                            <div class="input-group">
+                                                <input type="text" id="manual-ticket-id" placeholder="Ví dụ: TIC-8801" required>
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                            </div>
+                                        </form>
+                                        <div style="margin-top: 15px; border-top: 1px dashed var(--border-glass); padding-top: 15px; text-align: center;">
+                                            <button type="button" class="btn btn-indigo btn-sm w-full" id="btn-quick-walkin" style="justify-content: center; height: 36px;">
+                                                <i class="ri-user-add-line"></i> Đăng ký Khách vãng lai
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Live Scanned Customer Detail Card -->
+                                <div class="glass-panel mb-20">
+                                    <div class="panel-header">
+                                        <h3><i class="ri-contacts-book-line text-emerald"></i> Khách Hàng Vừa Quét</h3>
+                                    </div>
+                                    <div class="panel-body" id="scan-customer-details">
+                                        <div class="scan-empty-state">
+                                            <i class="ri-qr-code-line"></i>
+                                            <p>Vui lòng đưa mã QR vé trước camera hoặc nhập ID thủ công để check-in khách hàng.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Session checkin counter -->
+                                <div class="glass-panel">
+                                    <div class="panel-header justify-between">
+                                        <h3><i class="ri-file-list-line text-amber"></i> Lịch Sử Quét Ca Trực</h3>
+                                        <span class="badge-count bg-amber" id="session-checkin-count">0</span>
+                                    </div>
+                                    <div class="panel-body max-h-200" id="session-checkin-logs">
+                                        <div class="text-muted text-center py-20">Chưa ghi nhận ca trực này.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- C. CUSTOMERS VIEW (IMPORT & QR GENERATION) -->
+                    <section id="view-customers" class="view-section">
+                        <!-- Import, Add Actions Row -->
+                        <div class="customers-action-bar glass-panel mb-20">
+                            <div class="action-bar-left">
+                                <button class="btn btn-primary" id="btn-add-customer">
+                                    <i class="ri-user-add-line"></i>
+                                    <span>Thêm Khách Hàng</span>
+                                </button>
+                                
+                                <div class="excel-import-wrapper">
+                                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hide">
+                                    <button class="btn btn-success" id="btn-trigger-import">
+                                        <i class="ri-file-excel-line"></i>
+                                        <span>Nhập Excel / CSV</span>
+                                    </button>
+                                    <button class="btn-icon btn-secondary" id="btn-download-template" title="Tải File Excel Mẫu">
+                                        <i class="ri-download-2-line"></i>
+                                    </button>
+                                </div>
+
+                                <button class="btn btn-secondary" id="btn-send-all-qrs" data-admin-only>
+                                    <i class="ri-mail-send-fill text-indigo"></i>
+                                    <span>Gửi QR Toàn Bộ</span>
+                                </button>
+                            </div>
+                            
+                            <!-- Search & Filter Controls -->
+                            <div class="action-bar-right">
+                                <div class="search-box">
+                                    <i class="ri-search-line"></i>
+                                    <input type="text" id="customer-search-input" placeholder="Tìm tên, trường, email, SĐT...">
+                                </div>
+                                <select id="customer-filter-type" class="form-select">
+                                    <option value="">Tất cả Chứng chỉ</option>
+                                    <option value="english">Có CC Tiếng Anh</option>
+                                    <option value="international">Có CC Tuyển Sinh QT</option>
+                                    <option value="both">Có cả hai</option>
+                                    <option value="none">Không có chứng chỉ</option>
+                                </select>
+                                <select id="customer-filter-status" class="form-select">
+                                    <option value="">Tất cả Trạng thái</option>
+                                    <option value="Pending">Chờ Check-in</option>
+                                    <option value="Checked In">Đã Check-in</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Drag and Drop Overlay Indicator -->
+                        <div id="drop-zone" class="drop-zone-overlay hide">
+                            <div class="drop-zone-content">
+                                <i class="ri-upload-cloud-2-line"></i>
+                                <h3>Thả File Excel/CSV Vào Đây</h3>
+                                <p>Hệ thống tự động nạp danh sách khách hàng và tự động sinh mã QR</p>
+                            </div>
+                        </div>
+
+                        <!-- Customer Table Panel -->
+                        <div class="glass-panel">
+                            <div class="panel-header justify-between">
+                                <div class="flex-align-center gap-8">
+                                    <h3>Danh Sách Khách Hàng</h3>
+                                    <span class="badge-status badge-info" id="customer-list-count">0 người</span>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-success btn-sm" id="btn-export-customers" title="Xuất Excel danh sách học sinh">
+                                        <i class="ri-file-excel-2-line"></i> Xuất Excel
+                                    </button>
+                                    <button class="btn btn-indigo btn-sm" id="btn-download-qr-zip" title="Tải ZIP toàn bộ ảnh QR Code của học sinh">
+                                        <i class="ri-folder-zip-line"></i> Tải ZIP Ảnh QR
+                                    </button>
+                                    <!-- Delete all (Admin) -->
+                                    <button class="btn btn-danger btn-sm" id="btn-clear-customers" data-admin-only>
+                                        <i class="ri-delete-bin-line"></i> Xóa Tất Cả Dữ Liệu
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="panel-body">
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead id="customer-table-header">
+                                            <tr>
+                                                <th>Mã Vé</th>
+                                                <th>Họ và Tên</th>
+                                                <th>Số Điện Thoại</th>
+                                                <th>Email</th>
+                                                <th>Trường THPT</th>
+                                                <th>CC Tiếng Anh</th>
+                                                <th>CC Tuyển Sinh QT</th>
+                                                <th>Trải Nghiệm Hoạt Động</th>
+                                                <th>Check-In</th>
+                                                <th class="text-right">Hành Động</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="customer-table-body">
+                                            <!-- Dynamically populated -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- D. HISTORY VIEW (CHECK-IN LOGS) -->
+                    <section id="view-history" class="view-section">
+                        <!-- Advanced Filter Bar -->
+                        <div class="glass-panel mb-20">
+                            <div class="panel-header">
+                                <h3><i class="ri-filter-2-line text-indigo"></i> Bộ Lọc Lịch Sử Check-In</h3>
+                            </div>
+                            <div class="panel-body">
+                                <div class="filter-layout-grid">
+                                    <div class="form-group">
+                                        <label for="history-search-input">Từ khóa khách hàng</label>
+                                        <input type="text" id="history-search-input" placeholder="Tên, Email hoặc Số điện thoại...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="history-filter-location">Địa điểm check-in</label>
+                                        <select id="history-filter-location" class="form-select">
+                                            <option value="">Tất cả địa điểm</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="history-filter-user">Nhân viên quét</label>
+                                        <select id="history-filter-user" class="form-select">
+                                            <option value="">Tất cả nhân viên</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="history-filter-date">Ngày check-in</label>
+                                        <input type="date" id="history-filter-date" class="form-input">
+                                    </div>
+                                </div>
+                                <div class="filter-actions-row justify-between mt-15">
+                                    <button class="btn btn-secondary" id="btn-reset-history-filters">
+                                        <i class="ri-refresh-line"></i> Reset Bộ Lọc
+                                    </button>
+                                    <button class="btn btn-success" id="btn-export-history">
+                                        <i class="ri-file-excel-2-line"></i> Xuất Báo Cáo Excel (CSV)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Logs table -->
+                        <div class="glass-panel">
+                            <div class="panel-header justify-between">
+                                <h3>Bản Ghi Lịch Sử Quét Mã Khách Hàng</h3>
+                                <span class="badge-status badge-success" id="history-logs-count">0 bản ghi</span>
+                            </div>
+                            <div class="panel-body">
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Thời Gian Quét</th>
+                                                <th>Mã Vé</th>
+                                                <th>Học Sinh</th>
+                                                <th>Trường THPT</th>
+                                                <th>CC Tiếng Anh</th>
+                                                <th>Địa Điểm Quét</th>
+                                                <th>Nhân Viên Check-in</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="history-table-body">
+                                            <!-- Dynamically populated -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- E. USERS ROLES VIEW (ADMIN ONLY) -->
+                    <section id="view-users" class="view-section">
+                        <div class="dashboard-double-panel">
+                            <!-- Left: Users List -->
+                            <div class="glass-panel flex-2">
+                                <div class="panel-header">
+                                    <h3>Tài Khoản Nhân Viên & Phân Quyền</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <div class="table-responsive">
+                                        <table class="data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Họ và Tên</th>
+                                                    <th>Email</th>
+                                                    <th>Bộ Phận</th>
+                                                    <th>Vai Trò</th>
+                                                    <th class="text-right">Hành Động</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="users-table-body">
+                                                <!-- Populated -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Create/Edit User Form -->
+                            <div class="glass-panel flex-1">
+                                <div class="panel-header">
+                                    <h3 id="user-form-title">Tạo Tài Khoản Nhân Viên Mới</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <form id="user-manage-form" class="standard-form">
+                                        <input type="hidden" id="manage-user-id" value="">
+                                        <div class="form-group">
+                                            <label for="manage-user-name">Họ và Tên</label>
+                                            <input type="text" id="manage-user-name" required placeholder="Lê Văn A">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manage-user-email">Email đăng nhập</label>
+                                            <input type="email" id="manage-user-email" required placeholder="name@qrcheckin.com">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manage-user-password">Mật khẩu</label>
+                                            <input type="password" id="manage-user-password" required placeholder="Tối thiểu 6 ký tự">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manage-user-dept">Bộ phận / Vị trí</label>
+                                            <input type="text" id="manage-user-dept" placeholder="Cổng Đón Khách 2">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manage-user-role">Vai trò phân quyền</label>
+                                            <select id="manage-user-role" class="form-select" required>
+                                                <option value="user">Người dùng (Chỉ check-in)</option>
+                                                <option value="manager">Quản lý (Xem lịch sử của nhóm)</option>
+                                                <option value="admin">Quản trị viên (Toàn quyền hệ thống)</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="btn-group mt-15 justify-end">
+                                            <button type="button" class="btn btn-secondary hide" id="btn-cancel-edit-user">Hủy</button>
+                                            <button type="submit" class="btn btn-primary" id="btn-save-user">Tạo Tài Khoản</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- F. EMAILS OUTBOX VIEW (ADMIN ONLY) -->
+                    <section id="view-emails" class="view-section">
+                        <div class="emails-header-summary glass-panel mb-20">
+                            <div class="summary-card-row">
+                                <div class="e-sum-card">
+                                    <span class="e-sum-label">Tổng Thư Đã Xử Lý</span>
+                                    <h2 id="email-sum-processed">0</h2>
+                                </div>
+                                <div class="e-sum-card">
+                                    <span class="e-sum-label">Chờ Gửi</span>
+                                    <h2 id="email-sum-pending" class="text-amber">0</h2>
+                                </div>
+                                <div class="e-sum-card">
+                                    <span class="e-sum-label">Gửi Thành Công (Mô phỏng)</span>
+                                    <h2 id="email-sum-success" class="text-emerald">0</h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel">
+                            <div class="panel-header justify-between">
+                                <h3>Hộp Thư Đi Mô Phỏng (Email Outbox Simulator)</h3>
+                                <div class="btn-group">
+                                    <button class="btn btn-primary btn-sm" id="btn-send-pending-emails">
+                                        <i class="ri-mail-send-line"></i> Gửi Tất Cả Thư Chờ
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" id="btn-clear-emails">
+                                        <i class="ri-delete-bin-line"></i> Xóa Nhật Ký Thư
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="panel-body">
+                                <p class="panel-desc mb-15">Danh sách toàn bộ vé QR tự động sinh ra và được đẩy vào outbox để gửi đi. Bạn có thể nhấn <strong>"Xem Email HTML"</strong> để preview tấm vé chuyên nghiệp được gửi tới khách hàng.</p>
+                                <div class="table-responsive">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Thời Gian Tạo</th>
+                                                <th>Khách Hàng</th>
+                                                <th>Email Nhận</th>
+                                                <th>Tiêu Đề Email</th>
+                                                <th>Trạng Thái</th>
+                                                <th class="text-right">Xem Bản Bản Xem Trước</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="email-outbox-table-body">
+                                            <!-- Dynamically populated -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- G. SETTINGS VIEW -->
+                    <section id="view-settings" class="view-section">
+                        <div class="settings-grid">
+                            <!-- Left: Application configuration -->
+                            <div class="glass-panel flex-2">
+                                <div class="panel-header">
+                                    <h3>Cấu Hình Ứng Dụng</h3>
+                                </div>
+                                <div class="panel-body">
+                                    <form id="settings-general-form" class="standard-form">
+                                        <!-- Sound configuration -->
+                                        <div class="settings-group">
+                                            <h4><i class="ri-volume-up-line text-indigo"></i> Cài Đặt Âm Thanh & Phản Hồi</h4>
+                                            <div class="form-group flex-row gap-15 mt-10">
+                                                <label class="switch-container">
+                                                    <input type="checkbox" id="settings-sound-enabled" checked>
+                                                    <span class="switch-slider"></span>
+                                                </label>
+                                                <div class="switch-label-wrapper">
+                                                    <strong>Bật âm thanh khi Check-in</strong>
+                                                    <p class="text-muted font-12">Phát tiếng Chime high-tech khi quét thành công và tiếng Beep khi lỗi.</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-group mt-15">
+                                                <label for="settings-sound-volume">Âm lượng thông báo: <strong id="val-sound-volume">80%</strong></label>
+                                                <input type="range" id="settings-sound-volume" min="10" max="100" value="80" class="form-range">
+                                            </div>
+                                        </div>
+
+                                        <hr class="settings-divider">
+
+                                        <!-- Push notification configurations -->
+                                        <div class="settings-group">
+                                            <h4><i class="ri-notification-badge-line text-crimson"></i> Cài Đặt Thông Báo Đẩy</h4>
+                                            <div class="form-group flex-row gap-15 mt-10">
+                                                <label class="switch-container">
+                                                    <input type="checkbox" id="settings-browser-notification-enabled">
+                                                    <span class="switch-slider"></span>
+                                                </label>
+                                                <div class="switch-label-wrapper">
+                                                    <strong>Kích hoạt Push Notification của Trình duyệt</strong>
+                                                    <p class="text-muted font-12">Hiển thị thông báo toast của Windows khi check-in thành công dù bạn đang ở tab khác.</p>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-secondary btn-sm mt-10" id="btn-request-browser-notification">
+                                                <i class="ri-alert-line"></i> Yêu cầu quyền hệ thống
+                                            </button>
+                                        </div>
+
+                                        <hr class="settings-divider">
+
+                                        <!-- Event Locations Manager -->
+                                        <div class="settings-group">
+                                            <h4><i class="ri-map-pin-2-line text-emerald"></i> Quản Lý Địa Điểm Check-In</h4>
+                                            <p class="text-muted font-12 mb-10">Thêm các lối đi hoặc cổng soát vé có thể chọn trong ca trực.</p>
+                                            
+                                            <div class="input-group">
+                                                <input type="text" id="new-location-input" placeholder="Ví dụ: Hội trường C">
+                                                <button type="button" class="btn btn-primary" id="btn-add-location">Thêm</button>
+                                            </div>
+                                            <div class="locations-badge-container mt-10" id="settings-locations-badges">
+                                                <!-- JS populated -->
+                                            </div>
+                                        </div>
+
+                                        <hr class="settings-divider">
+
+                                        <div class="justify-end gap-10 mt-20">
+                                            <button type="submit" class="btn btn-primary">Lưu Cấu Hình</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <!-- Right: Integrations Column -->
+                            <div class="flex-1" style="display: flex; flex-direction: column; gap: 20px;">
+                                <!-- EmailJS Configuration -->
+                                <div class="glass-panel w-full">
+                                    <div class="panel-header">
+                                        <h3><i class="ri-mail-settings-line text-indigo"></i> Cấu Hình Gửi Email Thực Tế</h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <p class="panel-desc mb-15">Chúng tôi tích hợp dịch vụ EmailJS giúp bạn tự động gửi email thực tế chứa vé QR cho khách hàng. Nếu cấu hình trống, hệ thống sẽ tự động sử dụng **Mô Phỏng Outbox**.</p>
+                                        
+                                        <form id="settings-emailjs-form" class="standard-form">
+                                            <div class="form-group flex-row gap-15 mb-15">
+                                                <label class="switch-container">
+                                                    <input type="checkbox" id="emailjs-enabled">
+                                                    <span class="switch-slider"></span>
+                                                </label>
+                                                <div class="switch-label-wrapper">
+                                                    <strong>Kích hoạt gửi thật qua EmailJS</strong>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label for="emailjs-service-id">EmailJS Service ID</label>
+                                                <input type="text" id="emailjs-service-id" placeholder="service_xxxxxx">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="emailjs-template-id">EmailJS Template ID</label>
+                                                <input type="text" id="emailjs-template-id" placeholder="template_xxxxxx">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="emailjs-public-key">EmailJS Public Key</label>
+                                                <input type="text" id="emailjs-public-key" placeholder="user_xxxxxxx hoặc xxx-xxx">
+                                            </div>
+
+                                            <div class="emailjs-tip">
+                                                <p><i class="ri-lightbulb-line"></i> <strong>Mẹo setup:</strong> Tạo template email trên EmailJS với các tham số: <code>{{name}}</code>, <code>{{email}}</code>, <code>{{ticket_id}}</code>, và <code>{{qr_code_url}}</code> để nhúng ảnh vé tự sinh.</p>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary btn-block mt-15">
+                                                <i class="ri-save-3-line"></i> Lưu Thông Tin EmailJS
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <!-- Google Sheets Sync Configuration -->
+                                <div class="glass-panel w-full">
+                                    <div class="panel-header">
+                                        <h3><i class="ri-google-line text-success"></i> Đồng Bộ Google Sheets</h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <p class="panel-desc mb-15">Sử dụng Google Sheets làm cơ sở dữ liệu trực tuyến. Phù hợp khi cần soát vé bằng nhiều điện thoại cùng lúc.</p>
+                                        
+                                        <form id="settings-sheets-form" class="standard-form">
+                                            <div class="form-group flex-row gap-15 mb-15">
+                                                <label class="switch-container">
+                                                    <input type="checkbox" id="sheets-sync-enabled">
+                                                    <span class="switch-slider"></span>
+                                                </label>
+                                                <div class="switch-label-wrapper">
+                                                    <strong>Kích hoạt đồng bộ Google Sheets</strong>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label for="sheets-script-url">Google Apps Script Web App URL</label>
+                                                <input type="url" id="sheets-script-url" placeholder="https://script.google.com/macros/s/.../exec">
+                                            </div>
+
+                                            <div class="emailjs-tip" style="background: rgba(16, 185, 129, 0.05); border-left-color: var(--color-success);">
+                                                <p><i class="ri-lightbulb-line text-success"></i> <strong>Hướng dẫn:</strong> Bấm nút Xem Hướng dẫn cài đặt Apps Script để biết cách cấu hình Google Sheets làm database online.</p>
+                                            </div>
+
+                                            <div class="flex-align-center gap-10 mt-15">
+                                                <button type="button" class="btn btn-secondary btn-sm" id="btn-show-sheets-guide" style="flex: 1; justify-content: center; height: 36px;">
+                                                    <i class="ri-book-open-line text-success"></i> Hướng Dẫn
+                                                </button>
+                                                <button type="submit" class="btn btn-primary btn-sm" style="flex: 1.2; justify-content: center; height: 36px;">
+                                                    <i class="ri-save-3-line"></i> Lưu & Đồng Bộ
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                </main>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- H. DIALOG MODALS -->
+    
+    <!-- 1. Custom Dialog Add/Edit Customer -->
+    <div id="modal-customer" class="modal">
+        <div class="modal-content glass-card width-500">
+            <div class="modal-header justify-between">
+                <h3 id="customer-modal-title">Thêm Khách Hàng Mới</h3>
+                <button class="btn-icon btn-secondary btn-sm" id="btn-close-customer-modal"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="customer-form" class="standard-form">
+                <input type="hidden" id="customer-form-mode" value="add">
+                <input type="hidden" id="customer-form-id" value="">
+                
+                <div class="form-group">
+                    <label for="c-name">Họ và Tên</label>
+                    <input type="text" id="c-name" required placeholder="Ví dụ: Nguyễn Văn B">
+                </div>
+                <div class="form-group">
+                    <label for="c-phone">Số Điện Thoại</label>
+                    <input type="text" id="c-phone" required placeholder="09xxxxxxxx">
+                </div>
+                <div class="form-group">
+                    <label for="c-email">Email</label>
+                    <input type="email" id="c-email" required placeholder="hocsinh@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="c-school">Trường THPT</label>
+                    <input type="text" id="c-school" required placeholder="Ví dụ: THPT Chuyên Lê Hồng Phong">
+                </div>
+                <div class="form-group">
+                    <label for="c-english-cert">Chứng Chỉ Tiếng Anh</label>
+                    <input type="text" id="c-english-cert" placeholder="Ví dụ: IELTS 7.5 (hoặc Không)">
+                </div>
+                <div class="form-group">
+                    <label for="c-admission-cert">Chứng Chỉ Tuyển Sinh Quốc Tế</label>
+                    <input type="text" id="c-admission-cert" placeholder="Ví dụ: SAT 1450 (hoặc Không)">
+                </div>
+                <div class="form-group">
+                    <label for="c-activity-exp">Trải Nghiệm Hoạt Động</label>
+                    <textarea id="c-activity-exp" placeholder="Ví dụ: Lớp trưởng, Chủ nhiệm CLB bóng rổ, Huy chương vàng..." rows="3" style="width:100%; padding:10px; border-radius:6px; background:var(--bg-glass-input); border:1px solid var(--border-glass); color:var(--text-primary); font-family:inherit; resize:vertical;"></textarea>
+                </div>
+
+                <div class="modal-footer justify-end mt-20 gap-10">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-customer-modal">Hủy bỏ</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-customer-modal">Thêm Khách Hàng</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. Customer Ticket & QR Code Preview Modal -->
+    <div id="modal-ticket-preview" class="modal">
+        <div class="modal-content glass-card width-450 text-center relative-pos">
+            <button class="btn-icon btn-secondary btn-sm absolute-top-right" id="btn-close-ticket-modal"><i class="ri-close-line"></i></button>
+            
+            <div class="ticket-brand">
+                <i class="ri-qr-scan-2-line"></i>
+                <span>VÉ SỰ KIỆN CHÍNH THỨC</span>
+            </div>
+
+            <div class="ticket-body">
+                <h2 id="ticket-cust-name" class="ticket-name">Nguyễn Văn A</h2>
+                <p id="ticket-cust-company" class="ticket-company">Trường: THPT Chuyên Lê Hồng Phong</p>
+                
+                <div class="ticket-type-tag" id="ticket-cust-type">HỌC SINH</div>
+                
+                <!-- QR Code Target Holder -->
+                <div class="ticket-qr-container">
+                    <div id="ticket-qr-renderer"></div>
+                </div>
+
+                <!-- Barcode Target Holder -->
+                <div class="ticket-barcode-container">
+                    <svg id="ticket-barcode-renderer"></svg>
+                </div>
+
+                <div class="ticket-info-grid">
+                    <div>
+                        <span class="t-label">MÃ VÉ / ID</span>
+                        <strong id="ticket-cust-id" class="t-val">TIC-0000</strong>
+                    </div>
+                    <div>
+                        <span class="t-label">TRẠNG THÁI</span>
+                        <strong id="ticket-cust-status" class="t-val text-amber">CHỜ CHECK-IN</strong>
+                    </div>
+                </div>
+
+                <div class="ticket-footer-desc">
+                    <p><i class="ri-calendar-event-line"></i> Ngày: 22/05/2026 | Giờ: 08:00 - 17:00</p>
+                    <p><i class="ri-map-pin-user-line"></i> Địa điểm: Trung Tâm Hội Nghị Quốc Gia</p>
+                </div>
+            </div>
+            
+            <div class="ticket-action-buttons">
+                <button class="btn btn-indigo" id="btn-print-ticket">
+                    <i class="ri-printer-line"></i> In Vé / Tải PDF
+                </button>
+                <button class="btn btn-success" id="btn-send-single-email-preview">
+                    <i class="ri-mail-send-line"></i> Gửi Lại Email Vé
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Dynamic HTML Email Preview Modal -->
+    <div id="modal-email-preview" class="modal">
+        <div class="modal-content glass-card width-700 bg-dark-email">
+            <div class="modal-header justify-between border-bottom-none">
+                <h3>Bản Xem Trước Email HTML Gửi Khách Hàng</h3>
+                <button class="btn-icon btn-secondary btn-sm" id="btn-close-email-preview"><i class="ri-close-line"></i></button>
+            </div>
+            
+            <!-- Mock Email Details -->
+            <div class="email-mock-headers">
+                <p><strong>Người gửi:</strong> Sự Kiện Hội Thảo <noreply@qrcheckin.com></p>
+                <p id="email-mock-to"><strong>Người nhận:</strong> hoang.pham@example.com</p>
+                <p id="email-mock-sub"><strong>Tiêu đề:</strong> [Xác Nhận Đăng Ký] Vé Điện Tử QR Check-In Sự Kiện</p>
+            </div>
+            
+            <!-- Email Body Device Mockup container -->
+            <div class="email-device-body-preview" id="email-content-rendered-inside">
+                <!-- HTML ticket layout injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Third-party Virtual Camera & IP Stream Guide Modal -->
+    <div id="modal-camera-help" class="modal">
+        <div class="modal-content glass-card width-600" style="padding: 24px;">
+            <div class="modal-header justify-between border-bottom-none" style="margin-bottom: 20px;">
+                <h3 style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;"><i class="ri-camera-switch-line text-indigo" style="font-size: 20px;"></i> Kết Nối Camera Điện Thoại & Quét QR Dự Phòng</h3>
+                <button type="button" class="btn-icon btn-secondary btn-sm" id="btn-close-camera-help"><i class="ri-close-line"></i></button>
+            </div>
+            
+            <div class="modal-tabs" style="display: flex; gap: 10px; border-bottom: 1px solid var(--border-glass); padding-bottom: 10px; margin-bottom: 15px;">
+                <button type="button" class="modal-tab-btn active" data-tab="tab-virtual-webcam" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; background: var(--color-primary-alpha); color: var(--color-primary); border: none; border-radius: 6px; cursor: pointer;">Camera ảo (Wi-Fi/USB)</button>
+                <button type="button" class="modal-tab-btn" data-tab="tab-ip-webcam" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; background: transparent; color: var(--text-secondary); border: none; border-radius: 6px; cursor: pointer;">IP Webcam Không Dây</button>
+                <button type="button" class="modal-tab-btn" data-tab="tab-image-scan" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; background: transparent; color: var(--text-secondary); border: none; border-radius: 6px; cursor: pointer;">Quét từ File Ảnh</button>
+            </div>
+            
+            <div class="modal-tab-content">
+                <!-- Tab 1: Virtual Webcam (Iriun / DroidCam) -->
+                <div class="tab-pane active" id="tab-virtual-webcam">
+                    <p class="tab-desc mb-15 font-13 text-secondary" style="line-height: 1.5; margin-bottom: 15px;">Giải pháp kết nối trực tiếp vào hệ điều hành. Biến điện thoại thông minh của bạn thành một chiếc Webcam máy tính thực thụ qua mạng Wi-Fi hoặc dây cáp USB:</p>
+                    
+                    <div class="guide-steps" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">1</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Cài đặt ứng dụng lên Điện thoại</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Tìm kiếm ứng dụng <strong>Iriun Webcam</strong> hoặc <strong>DroidCam</strong> trên App Store (iOS) hoặc Google Play (Android) để tải về điện thoại.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">2</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Cài đặt phần mềm driver trên Máy tính</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Mở máy tính truy cập trang chủ <strong>iriun.com</strong> hoặc <strong>dev47apps.com</strong> để tải và cài đặt driver Windows/macOS client tương ứng.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">3</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Kết nối chung mạng Wi-Fi</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Đảm bảo điện thoại và máy tính kết nối chung mạng Wi-Fi. Khởi động ứng dụng trên cả 2 thiết bị để chúng tự động ghép đôi không dây.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">4</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Tiến hành Quét mã</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Camera điện thoại sẽ được hệ thống Windows nhận diện làm Webcam mặc định. Bạn chỉ cần chọn thiết bị <strong>"Iriun Webcam"</strong> hoặc <strong>"DroidCam"</strong> ở danh sách xổ xuống phía trên là có thể quét mã!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab 2: IP Webcam -->
+                <div class="tab-pane hide" id="tab-ip-webcam">
+                    <p class="tab-desc mb-15 font-13 text-secondary" style="line-height: 1.5; margin-bottom: 15px;">Giải pháp tiện lợi, bảo mật. Bạn không cần cài đặt bất cứ driver hay phần mềm bên thứ 3 nào lên máy tính của công ty, chỉ cần một chiếc điện thoại kết nối không dây qua IP:</p>
+                    
+                    <div class="guide-steps" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">1</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Cài đặt ứng dụng IP Webcam trên điện thoại</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Tải xuống ứng dụng miễn phí <strong>IP Webcam</strong> (phổ biến nhất trên Android) hoặc các phần mềm mjpeg stream tương đương trên iOS.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">2</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Khởi động server phát hình</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Mở ứng dụng, cuộn xuống chọn <strong>Start Server</strong>. Màn hình điện thoại hiển thị địa chỉ truyền dữ liệu cục bộ (Ví dụ: <code>http://192.168.1.50:8080</code>).</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">3</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Nhập URL Snapshot và quét</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Chọn nút <strong>"Kết nối IP Cam"</strong> ngoài màn hình quét, điền link ảnh chụp từ điện thoại vào ô nhập liệu: <code>http://[Địa_Chỉ_IP]/shot.jpg</code> (Ví dụ: <code>http://192.168.1.50:8080/shot.jpg</code>) và bấm kết nối để bắt đầu quét trực tuyến!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab 3: Upload Image Scan -->
+                <div class="tab-pane hide" id="tab-image-scan">
+                    <p class="tab-desc mb-15 font-13 text-secondary" style="line-height: 1.5; margin-bottom: 15px;">Nếu khách hàng đã gửi ảnh vé trước hoặc bạn nhận được ảnh chụp màn hình chứa mã QR từ người quản lý, đây là cách check-in trực tiếp từ tệp ảnh lưu sẵn:</p>
+                    
+                    <div class="guide-steps" style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">1</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Lưu trữ file ảnh QR</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Lưu file hình ảnh QR khách hàng gửi (định dạng JPG, PNG, GIF) vào thư mục trên máy tính.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">2</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Tải file lên hệ thống</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Chọn nút <strong>"Quét từ File Ảnh"</strong> trên giao diện quét. Tìm và chọn tệp ảnh QR trong hộp thoại tệp vừa hiển thị.</p>
+                            </div>
+                        </div>
+                        <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+                            <span class="step-num" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary-alpha); color: var(--color-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; margin-top: 2px;">3</span>
+                            <div class="step-body" style="font-size: 13px;">
+                                <strong style="display: block; font-weight: 600;">Tự động Check-in</strong>
+                                <p class="text-muted" style="font-size: 12px; margin-top: 2px;">Hệ thống sẽ chạy thuật toán giải mã ảnh nội bộ, đối chiếu danh sách khách hàng và check-in ngay lập tức kèm theo âm thanh thông báo.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer justify-end mt-20" style="margin-top: 25px; padding-top: 15px; border-top: 1px solid var(--border-glass);">
+                <button type="button" class="btn btn-primary" id="btn-close-camera-help-ok" style="font-size: 13px; padding: 8px 16px;">Đã Hiểu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Quick Walk-in Guest (Add Unregistered Guest on Scanner Screen) -->
+    <div id="modal-quick-walkin" class="modal">
+        <div class="modal-content glass-card width-500">
+            <div class="modal-header justify-between">
+                <h3><i class="ri-user-add-line text-indigo"></i> Khách Ngoài Danh Sách</h3>
+                <button class="btn-icon btn-secondary btn-sm" id="btn-close-walkin-modal"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="walkin-form" class="standard-form">
+                <div class="form-group">
+                    <label for="w-name">Họ và Tên</label>
+                    <input type="text" id="w-name" required placeholder="Ví dụ: Nguyễn Văn C">
+                </div>
+                <div class="form-group">
+                    <label for="w-phone">Số Điện Thoại</label>
+                    <input type="text" id="w-phone" required placeholder="09xxxxxxxx">
+                </div>
+                <div class="form-group">
+                    <label for="w-email">Email</label>
+                    <input type="email" id="w-email" required placeholder="hocsinh@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="w-school">Trường THPT</label>
+                    <input type="text" id="w-school" required placeholder="Ví dụ: THPT Gia Định">
+                </div>
+                <div class="form-group">
+                    <label for="w-english-cert">Chứng Chỉ Tiếng Anh</label>
+                    <input type="text" id="w-english-cert" placeholder="Ví dụ: IELTS 6.5 (hoặc Không)">
+                </div>
+
+                <div class="modal-footer justify-end mt-20 gap-10">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-walkin-modal">Hủy bỏ</button>
+                    <button type="submit" class="btn btn-indigo" id="btn-submit-walkin-modal">Đăng Ký & Check-In</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 6. Custom Dialog for Dynamic Column Mapping -->
+    <div id="modal-column-mapping" class="modal">
+        <div class="modal-content glass-card width-500">
+            <div class="modal-header justify-between">
+                <h3>Ánh Xạ Cột Excel Sự Kiện</h3>
+                <button class="btn-icon btn-secondary btn-sm" id="btn-close-mapping-modal"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 15px 0;">
+                <p class="panel-desc mb-15">Chúng tôi phát hiện file Excel của bạn có cấu trúc cột khác biệt. Hãy chọn cột tương ứng từ file Excel để hệ thống ánh xạ thông tin chính xác.</p>
+                
+                <form id="column-mapping-form" class="standard-form">
+                    <div class="form-group">
+                        <label for="map-name">Họ và Tên khách <span class="text-danger">*</span></label>
+                        <select id="map-name" class="form-select" required>
+                            <option value="">-- Chọn cột chứa Họ Tên --</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group mt-15">
+                        <label for="map-phone">Số Điện Thoại</label>
+                        <select id="map-phone" class="form-select">
+                            <option value="">-- Chọn cột chứa SĐT (Tùy chọn) --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group mt-15">
+                        <label for="map-email">Email</label>
+                        <select id="map-email" class="form-select">
+                            <option value="">-- Chọn cột chứa Email (Tùy chọn) --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group mt-15">
+                        <label for="map-id">Mã Vé / ID Vé</label>
+                        <select id="map-id" class="form-select">
+                            <option value="">-- Tự động sinh mã vé mới --</option>
+                        </select>
+                        <p class="text-muted font-11 mt-5">Chọn cột chứa mã vé có sẵn nếu bạn đã in thẻ QR trước đó, hoặc để trống để hệ thống tự cấp.</p>
+                    </div>
+
+                    <div class="justify-end gap-10 mt-25">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-mapping">Hủy bỏ</button>
+                        <button type="submit" class="btn btn-success" id="btn-confirm-mapping">
+                            <i class="ri-file-excel-line"></i> Hoàn Thành Nhập
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Custom Dialog for Google Sheets Apps Script Guide -->
+    <div id="modal-sheets-guide" class="modal">
+        <div class="modal-content glass-card width-600">
+            <div class="modal-header justify-between">
+                <h3><i class="ri-google-line text-success"></i> Hướng Dẫn Cấu Hình Google Sheets</h3>
+                <button class="btn-icon btn-secondary btn-sm" id="btn-close-sheets-guide-modal"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="modal-body max-h-400" style="overflow-y: auto; padding: 15px 0; font-size: 13px; line-height: 1.6;">
+                <p>Để dùng Google Sheets làm database lưu trữ trực tuyến, vui lòng thực hiện các bước sau:</p>
+                <ol style="margin-left: 20px; margin-top: 10px;">
+                    <li>Truy cập <a href="https://sheets.google.com" target="_blank" style="color: var(--color-primary); text-decoration: underline;">Google Sheets</a>, tạo một bảng tính mới.</li>
+                    <li>Ở dòng số 1, tạo các tiêu đề cột cho sự kiện của bạn (ví dụ: <code>Họ tên</code>, <code>Email</code>, <code>Số điện thoại</code>, <code>Tên công ty</code>,...).</li>
+                    <li>Vào mục <strong>Tiện ích mở rộng (Extensions)</strong> -> <strong>Apps Script</strong>.</li>
+                    <li>Xóa toàn bộ mã mặc định và dán đoạn mã Google Apps Script bên dưới vào.</li>
+                    <li>Bấm vào biểu tượng <strong>Lưu (Save)</strong>.</li>
+                    <li>Nhấp chọn <strong>Triển khai (Deploy)</strong> ở góc trên bên phải -> <strong>Tùy chọn triển khai mới (New deployment)</strong>.</li>
+                    <li>Chọn loại triển khai là <strong>Ứng dụng web (Web app)</strong>.</li>
+                    <li>Cấu hình thông số:
+                        <ul style="margin-left: 20px; list-style-type: circle;">
+                            <li><strong>Mô tả:</strong> Web API Checkin</li>
+                            <li><strong>Thực thi dưới tên:</strong> Tôi (chính tài khoản Google của bạn)</li>
+                            <li><strong>Ai có quyền truy cập:</strong> Mọi người (Anyone) - <em>Lưu ý: Bắt buộc chọn "Mọi người" để ứng dụng web của bạn có thể gửi dữ liệu check-in lên mà không bị chặn xác thực.</em></li>
+                        </ul>
+                    </li>
+                    <li>Bấm <strong>Triển khai (Deploy)</strong>. Cấp quyền truy cập cho script nếu tài khoản Google hỏi.</li>
+                    <li>Sao chép <strong>URL Ứng dụng web (Web app URL)</strong> nhận được (link có dạng <code>https://script.google.com/macros/s/.../exec</code>).</li>
+                    <li>Dán link đó vào ô cấu hình trong tab Thiết Lập và bật công tắc đồng bộ.</li>
+                </ol>
+
+                <div class="form-group mt-20">
+                    <label>Mã Apps Script (Bấm sao chép):</label>
+                    <textarea id="sheets-script-code" rows="10" readonly style="width: 100%; font-family: monospace; font-size: 11px; background: rgba(0,0,0,0.2); border-color: var(--border-glass); padding: 10px; color: var(--text-primary);"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer justify-end" style="padding-top: 15px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-script-code"><i class="ri-file-copy-line"></i> Sao chép Mã</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-close-sheets-guide-ok">Đã hiểu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core App Logic scripts -->
+    <script src="mock-data.js"></script>
+    <script src="app.v1.2.7.js"></script>
+</body>
+</html>
