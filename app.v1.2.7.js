@@ -1226,14 +1226,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let cameraConfig;
+        let videoConstraints;
         if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = {
+            cameraConfig = { facingMode: cameraId };
+            videoConstraints = {
                 facingMode: cameraId,
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
             };
         } else {
-            cameraConfig = {
+            cameraConfig = cameraId;
+            videoConstraints = {
                 deviceId: { exact: cameraId },
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
@@ -1242,6 +1245,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let scanConfig = {
             fps: 20,
+            videoConstraints: videoConstraints,
             qrbox: (width, height) => {
                 const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
                 const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
@@ -1425,14 +1429,17 @@ document.addEventListener("DOMContentLoaded", () => {
         activeScanners[slotId] = scanner;
 
         let cameraConfig;
+        let videoConstraints;
         if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = {
+            cameraConfig = { facingMode: cameraId };
+            videoConstraints = {
                 facingMode: cameraId,
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
             };
         } else {
-            cameraConfig = {
+            cameraConfig = cameraId;
+            videoConstraints = {
                 deviceId: { exact: cameraId },
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
@@ -1441,6 +1448,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let slotScanConfig = {
             fps: 20,
+            videoConstraints: videoConstraints,
             qrbox: (width, height) => {
                 const boxWidth = Math.max(180, Math.min(width * 0.8, 300));
                 const boxHeight = Math.max(100, Math.min(height * 0.5, 180));
