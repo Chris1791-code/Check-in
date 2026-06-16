@@ -8,6 +8,27 @@ document.addEventListener("DOMContentLoaded", () => {
     // ----------------------------------------------------------------------
     // I. STATE & STORAGE MANAGEMENT
     // ----------------------------------------------------------------------
+
+    // --- FIREBASE CONFIGURATION ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyCHodkEEPu0nbk1WmesegZeGF0nFSDDi2w",
+      authDomain: "qr-check-in-18a7b.firebaseapp.com",
+      databaseURL: "https://qr-check-in-18a7b-default-rtdb.firebaseio.com",
+      projectId: "qr-check-in-18a7b",
+      storageBucket: "qr-check-in-18a7b.firebasestorage.app",
+      messagingSenderId: "334150562299",
+      appId: "1:334150562299:web:b604012bc4c05fa62f9b5e",
+      measurementId: "G-8N0PL61J54"
+    };
+    
+    if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+    }
+    const db = typeof firebase !== 'undefined' ? firebase.database() : null;
+    let isInitialFirebaseLoad = true;
+    
     let state = {
         users: [],
         customers: [],
@@ -300,6 +321,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (storageKey) {
             localStorage.setItem(storageKey, JSON.stringify(val));
+            if (db) {
+                db.ref('event_data/' + key).set(val).catch(e => console.error("Firebase sync error", e));
+            }
         }
 
         if (isServerSyncEnabled) {
@@ -1226,7 +1250,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let scanConfig = {
-            videoConstraints: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
             fps: 25,
             qrbox: (width, height) => {
                 const boxWidth = Math.floor(width * 0.9);
@@ -1442,7 +1465,6 @@ document.addEventListener("DOMContentLoaded", () => {
         activeScanners[slotId] = scanner;
 
         let slotScanConfig = {
-            videoConstraints: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
             fps: 25,
             qrbox: (width, height) => {
                 const boxWidth = Math.floor(width * 0.9);
