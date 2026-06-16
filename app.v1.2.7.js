@@ -1238,7 +1238,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (cameraId === "environment" || cameraId === "user") {
             cameraConfig = { facingMode: cameraId };
             scanConfig.videoConstraints = {
-                facingMode: cameraId
+                facingMode: cameraId,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        } else {
+            scanConfig.videoConstraints = {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             };
         }
 
@@ -1418,7 +1425,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (cameraId === "environment" || cameraId === "user") {
             cameraConfig = { facingMode: cameraId };
             slotScanConfig.videoConstraints = {
-                facingMode: cameraId
+                facingMode: cameraId,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+        } else {
+            slotScanConfig.videoConstraints = {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             };
         }
 
