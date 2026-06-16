@@ -1225,27 +1225,8 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
         
-        let cameraConfig;
-        let videoConstraints;
-        if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = { facingMode: cameraId };
-            videoConstraints = {
-                facingMode: cameraId,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        } else {
-            cameraConfig = cameraId;
-            videoConstraints = {
-                deviceId: { exact: cameraId },
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        }
-
         let scanConfig = {
             fps: 20,
-            videoConstraints: videoConstraints,
             qrbox: (width, height) => {
                 const boxWidth = Math.max(250, Math.min(width * 0.8, 400));
                 const boxHeight = Math.max(150, Math.min(height * 0.5, 250));
@@ -1253,17 +1234,52 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        html5QrcodeScanner.start(
-            cameraConfig,
-            scanConfig,
-            (decodedText) => {
-                // QR Decoded successfully!
-                handleCheckIn(decodedText);
-            },
-            (errorMessage) => {
-                // Keep scanning silently
-            }
-        ).then(() => {
+        const tryStart = (config) => {
+            return html5QrcodeScanner.start(
+                config,
+                scanConfig,
+                (decodedText) => handleCheckIn(decodedText),
+                (errorMessage) => { /* silently ignore */ }
+            );
+        };
+
+        let startPromise;
+
+        if (cameraId === "environment") {
+            startPromise = tryStart({ facingMode: { exact: "environment" } })
+                .catch(err => {
+                    console.warn("Exact environment failed, trying loose", err);
+                    return tryStart({ facingMode: "environment" });
+                })
+                .catch(err => {
+                    console.warn("Loose environment failed, trying last enumerated camera", err);
+                    return Html5Qrcode.getCameras().then(cameras => {
+                        if (cameras && cameras.length > 0) {
+                            return tryStart(cameras[cameras.length - 1].id);
+                        }
+                        throw err;
+                    });
+                });
+        } else if (cameraId === "user") {
+            startPromise = tryStart({ facingMode: { exact: "user" } })
+                .catch(err => {
+                    console.warn("Exact user failed, trying loose", err);
+                    return tryStart({ facingMode: "user" });
+                })
+                .catch(err => {
+                    console.warn("Loose user failed, trying first enumerated camera", err);
+                    return Html5Qrcode.getCameras().then(cameras => {
+                        if (cameras && cameras.length > 0) {
+                            return tryStart(cameras[0].id);
+                        }
+                        throw err;
+                    });
+                });
+        } else {
+            startPromise = tryStart(cameraId);
+        }
+
+        startPromise.then(() => {
             // Success! Permission is granted, reload cameras to get full labels
             loadCameras();
         }).catch(err => {
@@ -1274,11 +1290,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
             
             if (isWebView) {
-                errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm ở góc trên hoặc bên dưới) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android) để sử dụng camera.";
+                errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android).";
             } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-                errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong phần Cài đặt của trình duyệt.";
+                errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong cài đặt.";
             } else {
-                errMsg += " Vui lòng kiểm tra quyền camera hoặc thử chuyển sang thiết bị camera khác trong danh sách.";
+                errMsg += " Vui lòng thử chuyển sang thiết bị camera khác trong danh sách (Camera 1, 2, 3...).";
             }
             showToast("Lỗi Camera", errMsg, "error");
             stopScanning();
@@ -1428,27 +1444,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         activeScanners[slotId] = scanner;
 
-        let cameraConfig;
-        let videoConstraints;
-        if (cameraId === "environment" || cameraId === "user") {
-            cameraConfig = { facingMode: cameraId };
-            videoConstraints = {
-                facingMode: cameraId,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        } else {
-            cameraConfig = cameraId;
-            videoConstraints = {
-                deviceId: { exact: cameraId },
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            };
-        }
-
         let slotScanConfig = {
             fps: 20,
-            videoConstraints: videoConstraints,
             qrbox: (width, height) => {
                 const boxWidth = Math.max(180, Math.min(width * 0.8, 300));
                 const boxHeight = Math.max(100, Math.min(height * 0.5, 180));
@@ -1456,26 +1453,52 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        scanner.start(
-            cameraConfig,
-            slotScanConfig,
-            (decodedText) => {
-                handleCheckIn(decodedText, slotId);
-            },
-            (errorMessage) => {
-                // Keep scanning silently
-            }
-        ).catch(err => {
-            console.error(`Error starting slot ${slotIndex} camera:`, err);
-            let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
-            const ua = navigator.userAgent.toLowerCase();
-            const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
-            const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
-            
-            if (isWebView) {
-                errMsg += " Hãy mở link trong trình duyệt Safari (iPhone) hoặc Chrome (Android) để trình duyệt được cấp quyền camera.";
-            }
-            showToast("Lỗi Camera Cổng " + slotIndex, errMsg, "error");
+        const tryStartSlot = (config) => {
+            return scanner.start(
+                config,
+                slotScanConfig,
+                (decodedText) => handleSlotCheckIn(slotId, decodedText),
+                (errorMessage) => { /* silently ignore */ }
+            );
+        };
+
+        let startPromise;
+
+        if (cameraId === "environment") {
+            startPromise = tryStartSlot({ facingMode: { exact: "environment" } })
+                .catch(e => {
+                    console.warn("Exact environment failed, trying loose", e);
+                    return tryStartSlot({ facingMode: "environment" });
+                })
+                .catch(e => {
+                    console.warn("Loose environment failed, trying last enumerated camera", e);
+                    return Html5Qrcode.getCameras().then(cameras => {
+                        if (cameras && cameras.length > 0) return tryStartSlot(cameras[cameras.length - 1].id);
+                        throw e;
+                    });
+                });
+        } else if (cameraId === "user") {
+            startPromise = tryStartSlot({ facingMode: { exact: "user" } })
+                .catch(e => {
+                    console.warn("Exact user failed, trying loose", e);
+                    return tryStartSlot({ facingMode: "user" });
+                })
+                .catch(e => {
+                    console.warn("Loose user failed, trying first enumerated camera", e);
+                    return Html5Qrcode.getCameras().then(cameras => {
+                        if (cameras && cameras.length > 0) return tryStartSlot(cameras[0].id);
+                        throw e;
+                    });
+                });
+        } else {
+            startPromise = tryStartSlot(cameraId);
+        }
+
+        startPromise.then(() => {
+            if (selectEl) selectEl.removeAttribute("disabled");
+        }).catch(err => {
+            console.error(`Error starting slot ${slotId}:`, err);
+            showToast("Lỗi Camera", `Không thể mở camera Cổng ${slotIndex}. Vui lòng đổi thiết bị khác trong danh sách.`, "error");
             stopSlotScanning(slotId);
         });
     }
