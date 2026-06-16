@@ -1226,6 +1226,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let scanConfig = {
+            videoConstraints: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
             fps: 25,
             qrbox: (width, height) => {
                 const boxWidth = Math.floor(width * 0.9);
@@ -1235,14 +1236,17 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         let startConfig = {};
+        let fullConstraints = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
+
         if (cameraId === "environment" || cameraId === "user") {
             startConfig = { facingMode: cameraId };
+            fullConstraints.facingMode = cameraId;
         } else {
             startConfig = { deviceId: cameraId };
+            fullConstraints.deviceId = cameraId;
         }
         
-        startConfig.width = { ideal: 1920, min: 640 };
-        startConfig.height = { ideal: 1080, min: 480 };
+        scanConfig.videoConstraints = fullConstraints;
 
         let startPromise = html5QrcodeScanner.start(
             startConfig,
@@ -1438,6 +1442,7 @@ document.addEventListener("DOMContentLoaded", () => {
         activeScanners[slotId] = scanner;
 
         let slotScanConfig = {
+            videoConstraints: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
             fps: 25,
             qrbox: (width, height) => {
                 const boxWidth = Math.floor(width * 0.9);
@@ -1447,14 +1452,17 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         let startConfig = {};
+        let fullConstraints = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
+
         if (cameraId === "environment" || cameraId === "user") {
             startConfig = { facingMode: cameraId };
+            fullConstraints.facingMode = cameraId;
         } else {
             startConfig = { deviceId: cameraId };
+            fullConstraints.deviceId = cameraId;
         }
         
-        startConfig.width = { ideal: 1920, min: 640 };
-        startConfig.height = { ideal: 1080, min: 480 };
+        slotScanConfig.videoConstraints = fullConstraints;
 
         let startPromise = scanner.start(
             startConfig,
