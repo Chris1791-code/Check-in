@@ -1234,57 +1234,22 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        const tryStart = (config) => {
-            if (typeof config === "string" && config !== "environment" && config !== "user") {
-                config = { deviceId: config };
-            }
-            if (typeof config === "object") {
-                config.width = { ideal: 1920, min: 640 };
-                config.height = { ideal: 1080, min: 480 };
-            }
-            return html5QrcodeScanner.start(
-                config,
-                scanConfig,
-                (decodedText) => handleCheckIn(decodedText),
-                (errorMessage) => { /* silently ignore */ }
-            );
-        };
-
-        let startPromise;
-
-        if (cameraId === "environment") {
-            startPromise = tryStart({ facingMode: { exact: "environment" } })
-                .catch(err => {
-                    console.warn("Exact environment failed, trying loose", err);
-                    return tryStart({ facingMode: "environment" });
-                })
-                .catch(err => {
-                    console.warn("Loose environment failed, trying last enumerated camera", err);
-                    return Html5Qrcode.getCameras().then(cameras => {
-                        if (cameras && cameras.length > 0) {
-                            return tryStart(cameras[cameras.length - 1].id);
-                        }
-                        throw err;
-                    });
-                });
-        } else if (cameraId === "user") {
-            startPromise = tryStart({ facingMode: { exact: "user" } })
-                .catch(err => {
-                    console.warn("Exact user failed, trying loose", err);
-                    return tryStart({ facingMode: "user" });
-                })
-                .catch(err => {
-                    console.warn("Loose user failed, trying first enumerated camera", err);
-                    return Html5Qrcode.getCameras().then(cameras => {
-                        if (cameras && cameras.length > 0) {
-                            return tryStart(cameras[0].id);
-                        }
-                        throw err;
-                    });
-                });
+        let startConfig = {};
+        if (cameraId === "environment" || cameraId === "user") {
+            startConfig = { facingMode: cameraId };
         } else {
-            startPromise = tryStart(cameraId);
+            startConfig = { deviceId: cameraId };
         }
+        
+        startConfig.width = { ideal: 1920, min: 640 };
+        startConfig.height = { ideal: 1080, min: 480 };
+
+        let startPromise = html5QrcodeScanner.start(
+            startConfig,
+            scanConfig,
+            (decodedText) => handleCheckIn(decodedText),
+            (errorMessage) => { /* silently ignore */ }
+        );
 
         startPromise.then(() => {
             // Success! Permission is granted, reload cameras to get full labels
@@ -1329,7 +1294,6 @@ document.addEventListener("DOMContentLoaded", () => {
             stopScanning();
         });
     }
-
     function stopScanning() {
         const cameraPlaceholder = document.getElementById("scanner-placeholder");
         const viewportWrapper = document.getElementById("single-camera-viewport");
@@ -1482,56 +1446,24 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        const tryStartSlot = (config) => {
-            if (typeof config === "string" && config !== "environment" && config !== "user") {
-                config = { deviceId: config };
-            }
-            if (typeof config === "object") {
-                config.width = { ideal: 1920, min: 640 };
-                config.height = { ideal: 1080, min: 480 };
-            }
-            return scanner.start(
-                config,
-                slotScanConfig,
-                (decodedText) => handleSlotCheckIn(slotId, decodedText),
-                (errorMessage) => { /* silently ignore */ }
-            );
-        };
-
-        let startPromise;
-
-        if (cameraId === "environment") {
-            startPromise = tryStartSlot({ facingMode: { exact: "environment" } })
-                .catch(e => {
-                    console.warn("Exact environment failed, trying loose", e);
-                    return tryStartSlot({ facingMode: "environment" });
-                })
-                .catch(e => {
-                    console.warn("Loose environment failed, trying last enumerated camera", e);
-                    return Html5Qrcode.getCameras().then(cameras => {
-                        if (cameras && cameras.length > 0) return tryStartSlot(cameras[cameras.length - 1].id);
-                        throw e;
-                    });
-                });
-        } else if (cameraId === "user") {
-            startPromise = tryStartSlot({ facingMode: { exact: "user" } })
-                .catch(e => {
-                    console.warn("Exact user failed, trying loose", e);
-                    return tryStartSlot({ facingMode: "user" });
-                })
-                .catch(e => {
-                    console.warn("Loose user failed, trying first enumerated camera", e);
-                    return Html5Qrcode.getCameras().then(cameras => {
-                        if (cameras && cameras.length > 0) return tryStartSlot(cameras[0].id);
-                        throw e;
-                    });
-                });
+        let startConfig = {};
+        if (cameraId === "environment" || cameraId === "user") {
+            startConfig = { facingMode: cameraId };
         } else {
-            startPromise = tryStartSlot(cameraId);
+            startConfig = { deviceId: cameraId };
         }
+        
+        startConfig.width = { ideal: 1920, min: 640 };
+        startConfig.height = { ideal: 1080, min: 480 };
+
+        let startPromise = scanner.start(
+            startConfig,
+            slotScanConfig,
+            (decodedText) => handleSlotCheckIn(slotId, decodedText),
+            (errorMessage) => { /* silently ignore */ }
+        );
 
         startPromise.then(() => {
-            
             if (selectEl) selectEl.removeAttribute("disabled");
             setTimeout(() => {
                 try {
@@ -1560,7 +1492,6 @@ document.addEventListener("DOMContentLoaded", () => {
             stopSlotScanning(slotId);
         });
     }
-
     function stopSlotScanning(slotId) {
         const slotIndex = slotId.split("-")[1];
         const slotEl = document.getElementById(`cam-slot-${slotIndex}`);
