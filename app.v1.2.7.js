@@ -339,6 +339,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    async function stopCameraScan() {
+        if (html5QrcodeScanner && isScanning) {
+            try {
+                await html5QrcodeScanner.stop();
+                html5QrcodeScanner.clear();
+                isScanning = false;
+                // Add delay for iOS hardware release
+                await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (err) {
+                console.warn("Could not stop camera cleanly", err);
+            }
+        }
+    }
+
     // ----------------------------------------------------------------------
     // II. AUDIO SYNTHESIZER (WEB AUDIO API - NO EXTERNAL MP3 NEEDED)
     // ----------------------------------------------------------------------
@@ -1295,6 +1309,20 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 1500);
         }).catch(err => {
             console.error("Error starting camera reader:", err);
+            
+            if (typeof startConfig === 'string') {
+                console.warn("Failed with deviceId, trying exact environment fallback", err);
+                html5QrcodeScanner.start({ facingMode: "environment" }, scanConfig, 
+                    (decodedText) => handleCheckIn(decodedText), 
+                    (errorMessage) => { /* silently ignore */ }
+                ).then(() => {
+                    loadCameras();
+                }).catch(errFallback => {
+                    alert(`Lỗi Camera iPhone\nKhông thể khởi động camera (${errFallback.name || errFallback.message || errFallback}). Thử tải lại trang hoặc mở bằng trình duyệt Safari.`);
+                });
+                return;
+            }
+
             let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
             const ua = navigator.userAgent.toLowerCase();
             const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
@@ -1498,6 +1526,19 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 1500);
         }).catch(err => {
             console.error(`Error starting slot ${slotId}:`, err);
+            
+            if (typeof startConfig === 'string') {
+                console.warn("Failed with deviceId, trying exact environment fallback", err);
+                scanner.start({ facingMode: "environment" }, slotScanConfig, 
+                    (decodedText) => handleSlotScan(slotId, decodedText), 
+                    (errorMessage) => { /* silently ignore */ }
+                ).catch(errFallback => {
+                    showToast("Lỗi Camera iPhone", `Không thể mở camera Cổng ${slotIndex}. Vui lòng thử Safari.`, "error");
+                    stopSlotScanning(slotId);
+                });
+                return;
+            }
+
             showToast("Lỗi Camera", `Không thể mở camera Cổng ${slotIndex}. Vui lòng đổi thiết bị khác trong danh sách.`, "error");
             stopSlotScanning(slotId);
         });
