@@ -1025,29 +1025,51 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (typeof Quagga !== 'undefined') {
-                const imgUrl = URL.createObjectURL(file);
-                Quagga.decodeSingle({
-                    src: imgUrl,
-                    numOfWorkers: 0,
-                    inputStream: { size: 1920 },
-                    decoder: {
-                        readers: [
-                            "code_128_reader", "code_39_reader", "code_93_reader",
-                            "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
-                        ]
-                    },
-                    locate: true
-                }, function(result) {
-                    URL.revokeObjectURL(imgUrl);
-                    if (result && result.codeResult && result.codeResult.code) {
-                        console.log("Quagga2 decoded 1D Barcode:", result.codeResult.code);
-                        handleCheckIn(result.codeResult.code);
-                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
-                    } else {
-                        // Fallback to Html5Qrcode
-                        fallbackToHtml5QrCode(file);
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    const canvas = document.createElement("canvas");
+                    const ctx = canvas.getContext("2d");
+                    const MAX_WIDTH = 1200;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > MAX_WIDTH) {
+                        height = Math.floor(height * (MAX_WIDTH / width));
+                        width = MAX_WIDTH;
                     }
-                });
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    Quagga.decodeSingle({
+                        src: canvas.toDataURL("image/jpeg", 0.9),
+                        numOfWorkers: 0,
+                        inputStream: { size: width },
+                        decoder: {
+                            readers: [
+                                "code_128_reader", "code_39_reader", "code_93_reader",
+                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
+                            ]
+                        },
+                        locate: true
+                    }, function(result) {
+                        if (result && result.codeResult && result.codeResult.code) {
+                            console.log("Quagga2 decoded 1D Barcode:", result.codeResult.code);
+                            handleCheckIn(result.codeResult.code);
+                            if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                        } else {
+                            fallbackToHtml5QrCode(file);
+                        }
+                    });
+                };
+                img.onerror = function() {
+                    URL.revokeObjectURL(url);
+                    fallbackToHtml5QrCode(file);
+                };
+                img.src = url;
             } else {
                 fallbackToHtml5QrCode(file);
             }
