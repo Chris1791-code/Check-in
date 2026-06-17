@@ -1275,11 +1275,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Apply HD resolution
         scanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
         
-        // CRITICAL FOR iOS: UI must be visible before starting camera
-        cameraUi.style.display = "block";
-        cameraOverlay.style.display = "block";
-        startScanBtn.style.display = "none";
-        stopScanBtn.style.display = "inline-flex";
+
 
         let startPromise = html5QrcodeScanner.start(
             startConfig,
