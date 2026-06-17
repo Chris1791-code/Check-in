@@ -1351,25 +1351,28 @@ document.addEventListener("DOMContentLoaded", () => {
                     let h = videoEl.videoHeight;
                     if (w === 0 || h === 0) return;
                     
-                    // Crop the center 80% width and 40% height (matching the qrbox)
-                    let cropW = Math.floor(w * 0.8);
-                    let cropH = Math.floor(h * 0.4);
+                    // Crop the center 90% width and 60% height (more forgiving aim)
+                    let cropW = Math.floor(w * 0.9);
+                    let cropH = Math.floor(h * 0.6);
                     let cropX = Math.floor((w - cropW) / 2);
                     let cropY = Math.floor((h - cropH) / 2);
                     
                     let targetW = cropW;
-                    if (targetW > 1000) {
-                        let scale = 1000 / targetW;
-                        targetW = 1000;
+                    if (targetW > 1200) {
+                        let scale = 1200 / targetW;
+                        targetW = 1200;
                         cropH = Math.floor(cropH * scale);
                     }
                     
                     canvas.width = targetW;
                     canvas.height = cropH;
+                    
+                    // Boost contrast and grayscale for better 1D barcode detection on bad cameras
+                    ctx.filter = "contrast(150%) brightness(110%) grayscale(100%)";
                     ctx.drawImage(videoEl, cropX, cropY, cropW, Math.floor(cropH * (cropW/targetW)), 0, 0, targetW, cropH);
                     
                     Quagga.decodeSingle({
-                        src: canvas.toDataURL("image/jpeg", 0.8),
+                        src: canvas.toDataURL("image/jpeg", 0.9),
                         numOfWorkers: 0,
                         inputStream: { size: targetW },
                         decoder: {
@@ -1387,7 +1390,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             }
                         }
                     });
-                }, 800); // Process every 800ms to save CPU
+                }, 200); // Process every 200ms (5 FPS) for lightning fast scanning
             }
 
         }).catch(err => {
