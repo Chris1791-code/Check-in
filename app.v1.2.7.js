@@ -1265,15 +1265,21 @@ document.addEventListener("DOMContentLoaded", () => {
         
         let scanConfig = {
             fps: 25,
-            qrbox: (width, height) => {
-                const boxWidth = Math.floor(width * 0.9);
-                const boxHeight = Math.floor(Math.min(height * 0.6, boxWidth));
-                return { width: boxWidth, height: boxHeight };
-            }
+            // qrbox removed for full-frame barcode scanning
         };
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
         delete scanConfig.videoConstraints;
+
+        
+        // Apply HD resolution
+        scanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+        
+        // CRITICAL FOR iOS: UI must be visible before starting camera
+        cameraUi.style.display = "block";
+        cameraOverlay.style.display = "block";
+        startScanBtn.style.display = "none";
+        stopScanBtn.style.display = "inline-flex";
 
         let startPromise = html5QrcodeScanner.start(
             startConfig,
@@ -1484,15 +1490,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let slotScanConfig = {
             fps: 25,
-            qrbox: (width, height) => {
-                const boxWidth = Math.floor(width * 0.9);
-                const boxHeight = Math.floor(Math.min(height * 0.6, boxWidth));
-                return { width: boxWidth, height: boxHeight };
-            }
+            // qrbox removed for full-frame barcode scanning
         };
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
         delete slotScanConfig.videoConstraints;
+
+        // Apply HD resolution for better scanning
+        slotScanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+        
+        // CRITICAL FOR iOS: UI must be visible before starting camera
+        const slotEl = document.getElementById(cam-slot-);
+        if (slotEl) {
+            const uiOverlay = slotEl.querySelector('.scanner-placeholder-overlay');
+            const uiBtn = slotEl.querySelector('.btn-stop-slot');
+            if (uiOverlay) uiOverlay.style.display = 'none';
+            if (uiBtn) uiBtn.style.display = 'inline-flex';
+        }
 
         let startPromise = scanner.start(
             startConfig,
