@@ -1259,7 +1259,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         let startConfig = {};
-        let fullConstraints = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
+        let fullConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
 
         if (cameraId === "environment" || cameraId === "user") {
             startConfig = { facingMode: cameraId };
@@ -1474,7 +1474,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         let startConfig = {};
-        let fullConstraints = { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
+        let fullConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
 
         if (cameraId === "environment" || cameraId === "user") {
             startConfig = { facingMode: cameraId };
