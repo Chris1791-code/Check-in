@@ -1,3 +1,4 @@
+window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 /* ==========================================================================
    CORE APPLICATION LOGIC FOR QR CHECK-IN SYSTEM
    Author: Antigravity Team
@@ -342,7 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function stopCameraScan() {
         if (html5QrcodeScanner && isScanning) {
             try {
-                await html5QrcodeScanner.stop();
+                await window.stopQuaggaLive(); html5QrcodeScanner.stop();
                 html5QrcodeScanner.clear();
                 isScanning = false;
                 // Add delay for iOS hardware release
@@ -1275,7 +1276,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
+            window.stopQuaggaLive(); html5QrcodeScanner.stop().then(() => {
                 initCameraScan(selectedCameraId);
             });
         } else {
@@ -1285,25 +1286,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function initCameraScan(cameraId) {
         html5QrcodeScanner = new Html5Qrcode("qr-reader", {
-            
-            experimentalFeatures: {
-                useBarCodeDetectorIfSupported: false
-            }
+            experimentalFeatures: { useBarCodeDetectorIfSupported: false }
         });
         
         let scanConfig = {
             fps: 25,
-            // qrbox removed for full-frame barcode scanning
+            qrbox: function(viewfinderWidth, viewfinderHeight) {
+                let minEdgePercentage = 0.8;
+                let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+                return {
+                    width: qrboxSize,
+                    height: Math.floor(qrboxSize / 2.5) // Sleek rectangle for 1D barcodes
+                };
+            },
+            disableFlip: false
         };
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
         delete scanConfig.videoConstraints;
-
-        
-        // Apply HD resolution
-        scanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-        
-
 
         let startPromise = html5QrcodeScanner.start(
             startConfig,
@@ -1313,9 +1314,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
 
         startPromise.then(() => {
-            // Success! Permission is granted, reload cameras to get full labels
             loadCameras();
-            // Try to set zoom and focus for small barcodes
             setTimeout(() => {
                 try {
                     const videoEl = document.querySelector("#qr-reader video");
@@ -1337,6 +1336,60 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 } catch(e){}
             }, 1500);
+
+            // DUAL ENGINE: Run Quagga2 in the background for 1D Barcodes
+            if (typeof Quagga !== 'undefined' && !window.quaggaLiveInterval) {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                
+                window.quaggaLiveInterval = setInterval(() => {
+                    if (isProcessing) return; // Don't scan if app is busy checking in
+                    const videoEl = document.querySelector("#qr-reader video");
+                    if (!videoEl || videoEl.paused || videoEl.ended) return;
+                    
+                    let w = videoEl.videoWidth;
+                    let h = videoEl.videoHeight;
+                    if (w === 0 || h === 0) return;
+                    
+                    // Crop the center 80% width and 40% height (matching the qrbox)
+                    let cropW = Math.floor(w * 0.8);
+                    let cropH = Math.floor(h * 0.4);
+                    let cropX = Math.floor((w - cropW) / 2);
+                    let cropY = Math.floor((h - cropH) / 2);
+                    
+                    let targetW = cropW;
+                    if (targetW > 1000) {
+                        let scale = 1000 / targetW;
+                        targetW = 1000;
+                        cropH = Math.floor(cropH * scale);
+                    }
+                    
+                    canvas.width = targetW;
+                    canvas.height = cropH;
+                    ctx.drawImage(videoEl, cropX, cropY, cropW, Math.floor(cropH * (cropW/targetW)), 0, 0, targetW, cropH);
+                    
+                    Quagga.decodeSingle({
+                        src: canvas.toDataURL("image/jpeg", 0.8),
+                        numOfWorkers: 0,
+                        inputStream: { size: targetW },
+                        decoder: {
+                            readers: [
+                                "code_128_reader", "code_39_reader", "code_93_reader",
+                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
+                            ]
+                        },
+                        locate: true
+                    }, function(result) {
+                        if (result && result.codeResult && result.codeResult.code) {
+                            if (!isProcessing) { // Double check
+                                console.log("DUAL-ENGINE Quagga2 found barcode:", result.codeResult.code);
+                                handleCheckIn(result.codeResult.code);
+                            }
+                        }
+                    });
+                }, 800); // Process every 800ms to save CPU
+            }
+
         }).catch(err => {
             console.error("Error starting camera reader:", err);
             
@@ -1380,7 +1433,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stopIpStreamScan();
 
         if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
+            window.stopQuaggaLive(); html5QrcodeScanner.stop().then(() => {
                 html5QrcodeScanner = null;
             }).catch(err => {
                 console.error("Failed to stop scanner gracefully:", err);
