@@ -1007,23 +1007,50 @@ document.addEventListener("DOMContentLoaded", () => {
             tempDiv.style.display = "none";
             document.body.appendChild(tempDiv);
 
-            const fileDecoder = new Html5Qrcode(tempDiv.id, {
-                
-                experimentalFeatures: {
-                    useBarCodeDetectorIfSupported: false
-                }
-            });
-            fileDecoder.scanFile(file, true)
-                .then(decodedText => {
-                    handleCheckIn(decodedText);
-                    document.body.removeChild(tempDiv);
-                })
-                .catch(err => {
-                    console.error("Image file scanning failed:", err);
-                    playNotificationSound("error");
-                    showToast("Quét file thất bại", "Không tìm thấy mã QR hoặc mã vạch hợp lệ trong file ảnh này. Vui lòng chọn ảnh rõ nét hơn.", "error");
-                    document.body.removeChild(tempDiv);
+            function fallbackToHtml5QrCode(imageFile) {
+                const fileDecoder = new Html5Qrcode(tempDiv.id, {
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: false }
                 });
+                fileDecoder.scanFile(imageFile, true)
+                    .then(decodedText => {
+                        handleCheckIn(decodedText);
+                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                    })
+                    .catch(err => {
+                        console.error("Image file scanning failed:", err);
+                        playNotificationSound("error");
+                        showToast("Quét file thất bại", "Không tìm thấy mã QR hoặc mã vạch hợp lệ trong file ảnh này. Vui lòng chọn ảnh rõ nét hơn.", "error");
+                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                    });
+            }
+
+            if (typeof Quagga !== 'undefined') {
+                const imgUrl = URL.createObjectURL(file);
+                Quagga.decodeSingle({
+                    src: imgUrl,
+                    numOfWorkers: 0,
+                    inputStream: { size: 1920 },
+                    decoder: {
+                        readers: [
+                            "code_128_reader", "code_39_reader", "code_93_reader",
+                            "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
+                        ]
+                    },
+                    locate: true
+                }, function(result) {
+                    URL.revokeObjectURL(imgUrl);
+                    if (result && result.codeResult && result.codeResult.code) {
+                        console.log("Quagga2 decoded 1D Barcode:", result.codeResult.code);
+                        handleCheckIn(result.codeResult.code);
+                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                    } else {
+                        // Fallback to Html5Qrcode
+                        fallbackToHtml5QrCode(file);
+                    }
+                });
+            } else {
+                fallbackToHtml5QrCode(file);
+            }
         });
     }
 
@@ -1467,7 +1494,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
         
-        slotScanConfig.videoConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+        slotScanConfig.videoConstraints = { width: { ideal: 1920 } };
         
         // CRITICAL FOR iOS: UI must be visible before starting camera
 
