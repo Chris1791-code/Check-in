@@ -1258,18 +1258,8 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        let startConfig = {};
-        let fullConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-
-        if (cameraId === "environment" || cameraId === "user") {
-            startConfig = { facingMode: cameraId };
-            fullConstraints.facingMode = cameraId;
-        } else {
-            startConfig = { deviceId: cameraId };
-            fullConstraints.deviceId = cameraId;
-        }
-        
-        scanConfig.videoConstraints = fullConstraints;
+        let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
+        delete scanConfig.videoConstraints;
 
         let startPromise = html5QrcodeScanner.start(
             startConfig,
@@ -1473,18 +1463,8 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        let startConfig = {};
-        let fullConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-
-        if (cameraId === "environment" || cameraId === "user") {
-            startConfig = { facingMode: cameraId };
-            fullConstraints.facingMode = cameraId;
-        } else {
-            startConfig = { deviceId: cameraId };
-            fullConstraints.deviceId = cameraId;
-        }
-        
-        slotScanConfig.videoConstraints = fullConstraints;
+        let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
+        delete slotScanConfig.videoConstraints;
 
         let startPromise = scanner.start(
             startConfig,
@@ -3908,6 +3888,59 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         initStorage();
+
+    // --- FIREBASE SYNC LISTENER ---
+    if (typeof db !== 'undefined' && db) {
+        db.ref('event_data').once('value').then((snapshot) => {
+            if (!snapshot.exists() || !snapshot.val()) {
+                console.log("Firebase is empty. Seeding from local data.");
+                db.ref('event_data').set({
+                    users: state.users || [],
+                    customers: state.customers || [],
+                    logs: state.logs || [],
+                    emails: state.emails || [],
+                    activityFeed: state.activityFeed || [],
+                    settings: state.settings || {}
+                });
+            }
+        });
+
+        db.ref('event_data').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                console.log("Firebase data updated, syncing to UI.");
+                if (data.users) {
+                    state.users = data.users;
+                    localStorage.setItem('qr_users', JSON.stringify(data.users));
+                }
+                if (data.customers) {
+                    state.customers = data.customers;
+                    localStorage.setItem('qr_customers', JSON.stringify(data.customers));
+                    if (typeof renderCustomerTable === 'function') renderCustomerTable();
+                    if (typeof renderDashboardStats === 'function') renderDashboardStats();
+                }
+                if (data.logs) {
+                    state.logs = data.logs;
+                    localStorage.setItem('qr_checkin_logs', JSON.stringify(data.logs));
+                    if (typeof renderLogs === 'function') renderLogs();
+                }
+                if (data.emails) {
+                    state.emails = data.emails;
+                    localStorage.setItem('qr_emails', JSON.stringify(data.emails));
+                }
+                if (data.activityFeed) {
+                    state.activityFeed = data.activityFeed;
+                    localStorage.setItem('qr_activity_feed', JSON.stringify(data.activityFeed));
+                    if (typeof renderActivityFeed === 'function') renderActivityFeed();
+                }
+                if (data.settings) {
+                    state.settings = data.settings;
+                    localStorage.setItem('qr_settings', JSON.stringify(data.settings));
+                }
+            }
+        });
+    }
+
         checkLoginSession();
         loadCameras();
         renderActivityFeed();
