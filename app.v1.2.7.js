@@ -1459,15 +1459,15 @@ document.addEventListener("DOMContentLoaded", () => {
         let slotScanConfig = {
             fps: 25,
             qrbox: (width, height) => {
-                const boxWidth = Math.floor(width * 0.9);
-                const boxHeight = Math.floor(height * 0.35);
+                const boxWidth = Math.min(Math.floor(width * 0.9), 600);
+                const boxHeight = Math.min(Math.floor(height * 0.35), 200);
                 return { width: boxWidth, height: boxHeight };
             }
         };
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
         
-        slotScanConfig.videoConstraints = { width: { ideal: 1920, min: 1280 } };
+        slotScanConfig.videoConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
         
         // CRITICAL FOR iOS: UI must be visible before starting camera
 
