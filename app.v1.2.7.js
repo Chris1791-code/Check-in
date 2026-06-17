@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const firebaseConfig = {
       apiKey: "AIzaSyCHodkEEPu0nbk1WmesegZeGF0nFSDDi2w",
       authDomain: "qr-check-in-18a7b.firebaseapp.com",
-      databaseURL: "https://qr-check-in-18a7b-default-rtdb.firebaseio.com",
+      databaseURL: "https://qr-check-in-18a7b-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "qr-check-in-18a7b",
       storageBucket: "qr-check-in-18a7b.firebasestorage.app",
       messagingSenderId: "334150562299",
