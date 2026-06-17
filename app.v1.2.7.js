@@ -1500,7 +1500,7 @@ document.addEventListener("DOMContentLoaded", () => {
         slotScanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
         
         // CRITICAL FOR iOS: UI must be visible before starting camera
-        const slotEl = document.getElementById(cam-slot-);
+
         if (slotEl) {
             const uiOverlay = slotEl.querySelector('.scanner-placeholder-overlay');
             const uiBtn = slotEl.querySelector('.btn-stop-slot');
