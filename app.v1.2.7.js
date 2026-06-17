@@ -1256,7 +1256,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 Html5QrcodeSupportedFormats.CODE_39,
                 Html5QrcodeSupportedFormats.CODE_93,
                 Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E
             ],
             experimentalFeatures: {
                 useBarCodeDetectorIfSupported: true
@@ -1476,7 +1479,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 Html5QrcodeSupportedFormats.CODE_39,
                 Html5QrcodeSupportedFormats.CODE_93,
                 Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E
             ],
             experimentalFeatures: {
                 useBarCodeDetectorIfSupported: true
@@ -1486,14 +1492,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let slotScanConfig = {
             fps: 25,
-            // qrbox removed for full-frame barcode scanning
+            qrbox: (width, height) => {
+                const boxWidth = Math.floor(width * 0.9);
+                const boxHeight = Math.floor(height * 0.35);
+                return { width: boxWidth, height: boxHeight };
+            }
         };
 
         let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
-        delete slotScanConfig.videoConstraints;
-
-        // Apply HD resolution for better scanning
-        slotScanConfig.videoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+        
+        slotScanConfig.videoConstraints = { width: { ideal: 1920, min: 1280 } };
         
         // CRITICAL FOR iOS: UI must be visible before starting camera
 
