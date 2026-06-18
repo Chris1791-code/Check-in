@@ -1321,6 +1321,36 @@ document.addEventListener("DOMContentLoaded", () => {
         function onCameraStarted() {
             loadCameras();
             
+            // CRITICAL iOS FIX: Force playsinline and visibility on video element
+            setTimeout(() => {
+                const videoEl = document.querySelector("#qr-reader video");
+                if (videoEl) {
+                    videoEl.setAttribute("playsinline", "true");
+                    videoEl.setAttribute("webkit-playsinline", "true");
+                    videoEl.setAttribute("muted", "true");
+                    videoEl.style.display = "block";
+                    videoEl.style.visibility = "visible";
+                    videoEl.style.opacity = "1";
+                    videoEl.style.width = "100%";
+                    videoEl.style.height = "100%";
+                    videoEl.style.objectFit = "contain";
+                    // Force play on iOS
+                    if (videoEl.paused) {
+                        videoEl.play().catch(() => {});
+                    }
+                }
+                // Also fix any html5-qrcode internal divs that might have display:none
+                const qrReaderEl = document.getElementById("qr-reader");
+                if (qrReaderEl) {
+                    const innerDivs = qrReaderEl.querySelectorAll("div");
+                    innerDivs.forEach(div => {
+                        if (div.style.display === "none" && !div.id.includes("scan-region")) {
+                            // Don't unhide scan region controls
+                        }
+                    });
+                }
+            }, 500);
+
             // Apply zoom and continuous focus after camera starts
             setTimeout(() => {
                 try {
