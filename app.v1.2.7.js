@@ -1681,7 +1681,12 @@ document.addEventListener("DOMContentLoaded", () => {
         // trigger the permission prompt, then enumerate cameras.
         const ua = navigator.userAgent.toLowerCase();
         const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
-        if (isIOS) {
+        // FIX: Only prime camera permission when NO scanner is already running.
+        // If a camera is already active (e.g. loadCameras() is called from the
+        // start() success handler to refresh labels), opening a second getUserMedia
+        // stream steals/kills the active stream on iOS — this is what broke the
+        // front camera. When a scanner is live we already have permission + labels.
+        if (isIOS && !html5QrcodeScanner) {
             try {
                 // Request a minimal stream just to trigger iOS permission dialog
                 const tempStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
