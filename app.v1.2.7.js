@@ -1290,52 +1290,64 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         
         let scanConfig = {
-            fps: 25,
+            fps: 15,
             qrbox: function(viewfinderWidth, viewfinderHeight) {
-                let minEdgePercentage = 0.8;
-                let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-                let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+                let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                let qrboxSize = Math.floor(minEdge * 0.85);
                 return {
                     width: qrboxSize,
-                    height: Math.floor(qrboxSize / 2.5) // Sleek rectangle for 1D barcodes
+                    height: Math.floor(qrboxSize / 2.5)
                 };
             },
             disableFlip: false
         };
 
-        let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
-        delete scanConfig.videoConstraints;
+        // Detect iOS
+        const ua = navigator.userAgent.toLowerCase();
+        const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
 
-        let startPromise = html5QrcodeScanner.start(
-            startConfig,
-            scanConfig,
-            (decodedText) => handleCheckIn(decodedText),
-            (errorMessage) => { /* silently ignore */ }
-        );
+        // Build startConfig: iOS Chrome MUST use facingMode, never deviceId
+        let startConfig;
+        if (cameraId === "environment" || cameraId === "user") {
+            startConfig = { facingMode: cameraId };
+        } else if (isIOS) {
+            // On iOS Chrome, using deviceId often fails for rear camera.
+            // Always use facingMode as the primary method.
+            startConfig = { facingMode: "environment" };
+        } else {
+            startConfig = cameraId;
+        }
 
-        startPromise.then(() => {
+        function onCameraStarted() {
             loadCameras();
+            
+            // Apply zoom and continuous focus after camera starts
             setTimeout(() => {
                 try {
                     const videoEl = document.querySelector("#qr-reader video");
                     if (videoEl && videoEl.srcObject) {
                         const track = videoEl.srcObject.getVideoTracks()[0];
-                        const caps = track.getCapabilities();
-                        const constraints = { advanced: [] };
-                        let apply = false;
+                        const caps = track.getCapabilities ? track.getCapabilities() : {};
+                        const constraints = {};
+                        let hasAdvanced = [];
+                        
                         if (caps.focusMode && caps.focusMode.includes('continuous')) {
                             constraints.focusMode = 'continuous';
-                            apply = true;
                         }
                         if (caps.zoom) {
                             const zoomVal = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0));
-                            constraints.advanced.push({ zoom: zoomVal });
-                            apply = true;
+                            hasAdvanced.push({ zoom: zoomVal });
                         }
-                        if (apply) track.applyConstraints(constraints);
+                        if (caps.torch) {
+                            // Don't auto-enable torch, but it's available
+                        }
+                        if (hasAdvanced.length > 0) constraints.advanced = hasAdvanced;
+                        if (Object.keys(constraints).length > 0) {
+                            track.applyConstraints(constraints).catch(() => {});
+                        }
                     }
-                } catch(e){}
-            }, 1500);
+                } catch(e) { /* ignore */ }
+            }, 1000);
 
             // DUAL ENGINE: Run Quagga2 in the background for 1D Barcodes
             if (typeof Quagga !== 'undefined' && !window.quaggaLiveInterval) {
@@ -1343,87 +1355,131 @@ document.addEventListener("DOMContentLoaded", () => {
                 const ctx = canvas.getContext("2d", { willReadFrequently: true });
                 
                 window.quaggaLiveInterval = setInterval(() => {
-                    if (isProcessing) return; // Don't scan if app is busy checking in
+                    if (isProcessing) return;
                     const videoEl = document.querySelector("#qr-reader video");
-                    if (!videoEl || videoEl.paused || videoEl.ended) return;
+                    if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
                     
                     let w = videoEl.videoWidth;
                     let h = videoEl.videoHeight;
                     if (w === 0 || h === 0) return;
                     
-                    // Crop the center 90% width and 60% height (more forgiving aim)
+                    // Crop center 90% width, 60% height
                     let cropW = Math.floor(w * 0.9);
                     let cropH = Math.floor(h * 0.6);
                     let cropX = Math.floor((w - cropW) / 2);
                     let cropY = Math.floor((h - cropH) / 2);
                     
-                    let targetW = cropW;
-                    if (targetW > 1200) {
-                        let scale = 1200 / targetW;
-                        targetW = 1200;
-                        cropH = Math.floor(cropH * scale);
-                    }
+                    let targetW = Math.min(cropW, 1200);
+                    let targetH = Math.floor(cropH * (targetW / cropW));
                     
                     canvas.width = targetW;
-                    canvas.height = cropH;
+                    canvas.height = targetH;
                     
-                    // Boost contrast and grayscale for better 1D barcode detection on bad cameras
-                    ctx.filter = "contrast(150%) brightness(110%) grayscale(100%)";
-                    ctx.drawImage(videoEl, cropX, cropY, cropW, Math.floor(cropH * (cropW/targetW)), 0, 0, targetW, cropH);
+                    // Boost contrast and convert to grayscale for barcode clarity
+                    ctx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
+                    ctx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
                     
                     Quagga.decodeSingle({
-                        src: canvas.toDataURL("image/jpeg", 0.9),
+                        src: canvas.toDataURL("image/jpeg", 0.85),
                         numOfWorkers: 0,
                         inputStream: { size: targetW },
                         decoder: {
                             readers: [
                                 "code_128_reader", "code_39_reader", "code_93_reader",
-                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
+                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
+                                "i2of5_reader", "codabar_reader"
                             ]
                         },
                         locate: true
                     }, function(result) {
                         if (result && result.codeResult && result.codeResult.code) {
-                            if (!isProcessing) { // Double check
+                            if (!isProcessing) {
                                 console.log("DUAL-ENGINE Quagga2 found barcode:", result.codeResult.code);
                                 handleCheckIn(result.codeResult.code);
                             }
                         }
                     });
-                }, 200); // Process every 200ms (5 FPS) for lightning fast scanning
+                }, 250);
             }
+        }
 
+        // Attempt 1: Start with chosen config
+        html5QrcodeScanner.start(
+            startConfig,
+            scanConfig,
+            (decodedText) => handleCheckIn(decodedText),
+            (errorMessage) => { /* silently ignore */ }
+        ).then(() => {
+            onCameraStarted();
         }).catch(err => {
-            console.error("Error starting camera reader:", err);
+            console.error("Camera start attempt 1 failed:", err);
             
-            if (typeof startConfig === 'string') {
-                console.warn("Failed with deviceId, trying exact environment fallback", err);
-                html5QrcodeScanner.start({ facingMode: "environment" }, scanConfig, 
-                    (decodedText) => handleCheckIn(decodedText), 
+            // Attempt 2: If we used deviceId, try facingMode environment
+            if (typeof startConfig === 'string' || (typeof startConfig === 'object' && !startConfig.facingMode)) {
+                console.warn("Retrying with facingMode: environment");
+                html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    scanConfig,
+                    (decodedText) => handleCheckIn(decodedText),
                     (errorMessage) => { /* silently ignore */ }
                 ).then(() => {
-                    loadCameras();
-                }).catch(errFallback => {
-                    alert(`Lỗi Camera iPhone\nKhông thể khởi động camera (${errFallback.name || errFallback.message || errFallback}). Thử tải lại trang hoặc mở bằng trình duyệt Safari.`);
+                    onCameraStarted();
+                }).catch(err2 => {
+                    console.error("Camera start attempt 2 failed:", err2);
+                    
+                    // Attempt 3: Try facingMode user (front camera)
+                    html5QrcodeScanner.start(
+                        { facingMode: "user" },
+                        scanConfig,
+                        (decodedText) => handleCheckIn(decodedText),
+                        (errorMessage) => { /* silently ignore */ }
+                    ).then(() => {
+                        onCameraStarted();
+                        showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
+                    }).catch(err3 => {
+                        handleCameraError(err);
+                    });
                 });
                 return;
             }
 
-            let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
-            const ua = navigator.userAgent.toLowerCase();
-            const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
-            const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
-            
-            if (isWebView) {
-                errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android).";
-            } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-                errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong cài đặt.";
-            } else {
-                errMsg += " Vui lòng thử chuyển sang thiết bị camera khác trong danh sách (Camera 1, 2, 3...).";
+            // Attempt 2b: If we used facingMode environment and it failed, try user
+            if (startConfig.facingMode === "environment") {
+                html5QrcodeScanner.start(
+                    { facingMode: "user" },
+                    scanConfig,
+                    (decodedText) => handleCheckIn(decodedText),
+                    (errorMessage) => { /* silently ignore */ }
+                ).then(() => {
+                    onCameraStarted();
+                    showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
+                }).catch(err2 => {
+                    handleCameraError(err);
+                });
+                return;
             }
-            showToast("Lỗi Camera", errMsg, "error");
-            stopScanning();
+
+            handleCameraError(err);
         });
+    }
+
+    function handleCameraError(err) {
+        let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
+        const ua = navigator.userAgent.toLowerCase();
+        const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
+        const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
+        
+        if (isWebView) {
+            errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android).";
+        } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+            errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong cài đặt.";
+        } else if (isIOS) {
+            errMsg += " Trên iPhone, hãy thử mở bằng Safari thay vì Chrome để camera hoạt động tốt hơn.";
+        } else {
+            errMsg += " Vui lòng thử chuyển sang thiết bị camera khác trong danh sách.";
+        }
+        showToast("Lỗi Camera", errMsg, "error");
+        stopScanning();
     }
     function stopScanning() {
         const cameraPlaceholder = document.getElementById("scanner-placeholder");
