@@ -1292,66 +1292,50 @@ document.addEventListener("DOMContentLoaded", () => {
         let scanConfig = {
             fps: 15,
             qrbox: function(viewfinderWidth, viewfinderHeight) {
+                if (viewfinderWidth === 0 || viewfinderHeight === 0) return { width: 250, height: 100 };
                 let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
                 let qrboxSize = Math.floor(minEdge * 0.85);
                 return {
-                    width: qrboxSize,
-                    height: Math.floor(qrboxSize / 2.5)
+                    width: Math.max(qrboxSize, 200),
+                    height: Math.max(Math.floor(qrboxSize / 2.5), 80)
                 };
             },
             disableFlip: false
         };
 
-        // Detect iOS
         const ua = navigator.userAgent.toLowerCase();
         const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
 
-        // Build startConfig: iOS Chrome MUST use facingMode, never deviceId
-        let startConfig;
-        if (cameraId === "environment" || cameraId === "user") {
-            startConfig = { facingMode: cameraId };
-        } else if (isIOS) {
-            // On iOS Chrome, using deviceId often fails for rear camera.
-            // Always use facingMode as the primary method.
-            startConfig = { facingMode: "environment" };
-        } else {
-            startConfig = cameraId;
+        // Strategy: On iOS, pre-acquire the camera stream to get a real deviceId,
+        // then pass that deviceId to html5-qrcode. This avoids the library's
+        // internal getUserMedia which often fails on iOS Chrome for rear camera.
+        
+        function startWithConfig(config) {
+            return html5QrcodeScanner.start(
+                config, scanConfig,
+                (decodedText) => handleCheckIn(decodedText),
+                (errorMessage) => { /* silently ignore */ }
+            );
         }
 
         function onCameraStarted() {
             loadCameras();
             
-            // CRITICAL iOS FIX: Force playsinline and visibility on video element
+            // iOS FIX: Force playsinline and visibility on video element
             setTimeout(() => {
                 const videoEl = document.querySelector("#qr-reader video");
                 if (videoEl) {
                     videoEl.setAttribute("playsinline", "true");
                     videoEl.setAttribute("webkit-playsinline", "true");
-                    videoEl.setAttribute("muted", "true");
+                    videoEl.muted = true;
                     videoEl.style.display = "block";
                     videoEl.style.visibility = "visible";
                     videoEl.style.opacity = "1";
-                    videoEl.style.width = "100%";
-                    videoEl.style.height = "100%";
-                    videoEl.style.objectFit = "contain";
-                    // Force play on iOS
-                    if (videoEl.paused) {
-                        videoEl.play().catch(() => {});
-                    }
+                    if (videoEl.paused) videoEl.play().catch(() => {});
                 }
-                // Also fix any html5-qrcode internal divs that might have display:none
-                const qrReaderEl = document.getElementById("qr-reader");
-                if (qrReaderEl) {
-                    const innerDivs = qrReaderEl.querySelectorAll("div");
-                    innerDivs.forEach(div => {
-                        if (div.style.display === "none" && !div.id.includes("scan-region")) {
-                            // Don't unhide scan region controls
-                        }
-                    });
-                }
-            }, 500);
+            }, 300);
 
-            // Apply zoom and continuous focus after camera starts
+            // Apply zoom and continuous focus
             setTimeout(() => {
                 try {
                     const videoEl = document.querySelector("#qr-reader video");
@@ -1360,26 +1344,21 @@ document.addEventListener("DOMContentLoaded", () => {
                         const caps = track.getCapabilities ? track.getCapabilities() : {};
                         const constraints = {};
                         let hasAdvanced = [];
-                        
                         if (caps.focusMode && caps.focusMode.includes('continuous')) {
                             constraints.focusMode = 'continuous';
                         }
                         if (caps.zoom) {
-                            const zoomVal = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0));
-                            hasAdvanced.push({ zoom: zoomVal });
-                        }
-                        if (caps.torch) {
-                            // Don't auto-enable torch, but it's available
+                            hasAdvanced.push({ zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0)) });
                         }
                         if (hasAdvanced.length > 0) constraints.advanced = hasAdvanced;
                         if (Object.keys(constraints).length > 0) {
                             track.applyConstraints(constraints).catch(() => {});
                         }
                     }
-                } catch(e) { /* ignore */ }
+                } catch(e) {}
             }, 1000);
 
-            // DUAL ENGINE: Run Quagga2 in the background for 1D Barcodes
+            // DUAL ENGINE: Quagga2 background scanner
             if (typeof Quagga !== 'undefined' && !window.quaggaLiveInterval) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1389,23 +1368,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     const videoEl = document.querySelector("#qr-reader video");
                     if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
                     
-                    let w = videoEl.videoWidth;
-                    let h = videoEl.videoHeight;
+                    let w = videoEl.videoWidth, h = videoEl.videoHeight;
                     if (w === 0 || h === 0) return;
                     
-                    // Crop center 90% width, 60% height
                     let cropW = Math.floor(w * 0.9);
                     let cropH = Math.floor(h * 0.6);
                     let cropX = Math.floor((w - cropW) / 2);
                     let cropY = Math.floor((h - cropH) / 2);
-                    
                     let targetW = Math.min(cropW, 1200);
                     let targetH = Math.floor(cropH * (targetW / cropW));
                     
                     canvas.width = targetW;
                     canvas.height = targetH;
-                    
-                    // Boost contrast and convert to grayscale for barcode clarity
                     ctx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
                     ctx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
                     
@@ -1414,83 +1388,104 @@ document.addEventListener("DOMContentLoaded", () => {
                         numOfWorkers: 0,
                         inputStream: { size: targetW },
                         decoder: {
-                            readers: [
-                                "code_128_reader", "code_39_reader", "code_93_reader",
-                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
-                                "i2of5_reader", "codabar_reader"
-                            ]
+                            readers: ["code_128_reader","code_39_reader","code_93_reader",
+                                "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
+                                "i2of5_reader","codabar_reader"]
                         },
                         locate: true
                     }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code) {
-                            if (!isProcessing) {
-                                console.log("DUAL-ENGINE Quagga2 found barcode:", result.codeResult.code);
-                                handleCheckIn(result.codeResult.code);
-                            }
+                        if (result && result.codeResult && result.codeResult.code && !isProcessing) {
+                            console.log("DUAL-ENGINE Quagga2:", result.codeResult.code);
+                            handleCheckIn(result.codeResult.code);
                         }
                     });
                 }, 250);
             }
         }
 
-        // Attempt 1: Start with chosen config
-        html5QrcodeScanner.start(
-            startConfig,
-            scanConfig,
-            (decodedText) => handleCheckIn(decodedText),
-            (errorMessage) => { /* silently ignore */ }
-        ).then(() => {
-            onCameraStarted();
-        }).catch(err => {
-            console.error("Camera start attempt 1 failed:", err);
+        // === MAIN CAMERA OPEN LOGIC ===
+        
+        if (isIOS && (cameraId === "environment" || cameraId === "user")) {
+            // iOS Strategy: Pre-acquire stream with raw getUserMedia,
+            // extract real deviceId, then give it to html5-qrcode.
+            let facingMode = cameraId; // "environment" or "user"
             
-            // Attempt 2: If we used deviceId, try facingMode environment
-            if (typeof startConfig === 'string' || (typeof startConfig === 'object' && !startConfig.facingMode)) {
-                console.warn("Retrying with facingMode: environment");
-                html5QrcodeScanner.start(
-                    { facingMode: "environment" },
-                    scanConfig,
-                    (decodedText) => handleCheckIn(decodedText),
-                    (errorMessage) => { /* silently ignore */ }
-                ).then(() => {
-                    onCameraStarted();
-                }).catch(err2 => {
-                    console.error("Camera start attempt 2 failed:", err2);
-                    
-                    // Attempt 3: Try facingMode user (front camera)
-                    html5QrcodeScanner.start(
-                        { facingMode: "user" },
-                        scanConfig,
-                        (decodedText) => handleCheckIn(decodedText),
-                        (errorMessage) => { /* silently ignore */ }
-                    ).then(() => {
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: facingMode } },
+                audio: false
+            }).then(stream => {
+                // Got the stream! Extract deviceId from the track
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                const realDeviceId = settings.deviceId;
+                console.log("iOS: Pre-acquired camera. DeviceId:", realDeviceId, "FacingMode:", settings.facingMode);
+                
+                // Stop the pre-acquired stream (html5-qrcode will open its own)
+                stream.getTracks().forEach(t => t.stop());
+                
+                if (realDeviceId) {
+                    // Use the real deviceId
+                    startWithConfig(realDeviceId).then(() => {
                         onCameraStarted();
-                        showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
-                    }).catch(err3 => {
+                    }).catch(err => {
+                        console.warn("iOS: deviceId failed, trying facingMode", err);
+                        startWithConfig({ facingMode: facingMode }).then(() => {
+                            onCameraStarted();
+                        }).catch(err2 => {
+                            handleCameraError(err2);
+                        });
+                    });
+                } else {
+                    // No deviceId in settings, try facingMode directly
+                    startWithConfig({ facingMode: facingMode }).then(() => {
+                        onCameraStarted();
+                    }).catch(err => {
                         handleCameraError(err);
                     });
-                });
-                return;
-            }
-
-            // Attempt 2b: If we used facingMode environment and it failed, try user
-            if (startConfig.facingMode === "environment") {
-                html5QrcodeScanner.start(
-                    { facingMode: "user" },
-                    scanConfig,
-                    (decodedText) => handleCheckIn(decodedText),
-                    (errorMessage) => { /* silently ignore */ }
-                ).then(() => {
+                }
+            }).catch(preErr => {
+                console.error("iOS: getUserMedia pre-acquisition failed:", preErr);
+                // Fallback: try html5-qrcode directly with facingMode
+                startWithConfig({ facingMode: facingMode }).then(() => {
                     onCameraStarted();
-                    showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
-                }).catch(err2 => {
-                    handleCameraError(err);
+                }).catch(err => {
+                    // Last resort: try the other camera
+                    let altFacing = facingMode === "environment" ? "user" : "environment";
+                    startWithConfig({ facingMode: altFacing }).then(() => {
+                        onCameraStarted();
+                        showToast("Thông báo", "Không thể mở Camera " + (facingMode === "environment" ? "Sau" : "Trước") + ". Đã tự động chuyển sang camera còn lại.", "info");
+                    }).catch(err2 => {
+                        handleCameraError(preErr);
+                    });
                 });
-                return;
+            });
+        } else {
+            // Non-iOS: use standard approach
+            let startConfig;
+            if (cameraId === "environment" || cameraId === "user") {
+                startConfig = { facingMode: cameraId };
+            } else {
+                startConfig = cameraId;
             }
-
-            handleCameraError(err);
-        });
+            
+            startWithConfig(startConfig).then(() => {
+                onCameraStarted();
+            }).catch(err => {
+                console.error("Camera start failed:", err);
+                if (typeof startConfig === 'string') {
+                    startWithConfig({ facingMode: "environment" }).then(() => {
+                        onCameraStarted();
+                    }).catch(() => {
+                        startWithConfig({ facingMode: "user" }).then(() => {
+                            onCameraStarted();
+                            showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
+                        }).catch(err3 => handleCameraError(err));
+                    });
+                } else {
+                    handleCameraError(err);
+                }
+            });
+        }
     }
 
     function handleCameraError(err) {
