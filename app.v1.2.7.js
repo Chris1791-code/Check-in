@@ -1292,7 +1292,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let scanConfig = {
             fps: 15,
             qrbox: function(viewfinderWidth, viewfinderHeight) {
-                if (viewfinderWidth === 0 || viewfinderHeight === 0) return { width: 250, height: 100 };
+                if (!viewfinderWidth || !viewfinderHeight) return { width: 250, height: 100 };
                 let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
                 let qrboxSize = Math.floor(minEdge * 0.85);
                 return {
@@ -1303,38 +1303,19 @@ document.addEventListener("DOMContentLoaded", () => {
             disableFlip: false
         };
 
-        const ua = navigator.userAgent.toLowerCase();
-        const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
+        // Simple config: facingMode for generic, deviceId for specific
+        let startConfig = (cameraId === "environment" || cameraId === "user")
+            ? { facingMode: cameraId }
+            : cameraId;
 
-        // Strategy: On iOS, pre-acquire the camera stream to get a real deviceId,
-        // then pass that deviceId to html5-qrcode. This avoids the library's
-        // internal getUserMedia which often fails on iOS Chrome for rear camera.
-        
-        function startWithConfig(config) {
-            return html5QrcodeScanner.start(
-                config, scanConfig,
-                (decodedText) => handleCheckIn(decodedText),
-                (errorMessage) => { /* silently ignore */ }
-            );
-        }
-
-        function onCameraStarted() {
+        html5QrcodeScanner.start(
+            startConfig, scanConfig,
+            (decodedText) => handleCheckIn(decodedText),
+            (errorMessage) => { /* silently ignore */ }
+        ).then(() => {
+            // Camera started successfully
             loadCameras();
             
-            // iOS FIX: Force playsinline and visibility on video element
-            setTimeout(() => {
-                const videoEl = document.querySelector("#qr-reader video");
-                if (videoEl) {
-                    videoEl.setAttribute("playsinline", "true");
-                    videoEl.setAttribute("webkit-playsinline", "true");
-                    videoEl.muted = true;
-                    videoEl.style.display = "block";
-                    videoEl.style.visibility = "visible";
-                    videoEl.style.opacity = "1";
-                    if (videoEl.paused) videoEl.play().catch(() => {});
-                }
-            }, 300);
-
             // Apply zoom and continuous focus
             setTimeout(() => {
                 try {
@@ -1342,23 +1323,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (videoEl && videoEl.srcObject) {
                         const track = videoEl.srcObject.getVideoTracks()[0];
                         const caps = track.getCapabilities ? track.getCapabilities() : {};
-                        const constraints = {};
-                        let hasAdvanced = [];
                         if (caps.focusMode && caps.focusMode.includes('continuous')) {
-                            constraints.focusMode = 'continuous';
-                        }
-                        if (caps.zoom) {
-                            hasAdvanced.push({ zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2.0)) });
-                        }
-                        if (hasAdvanced.length > 0) constraints.advanced = hasAdvanced;
-                        if (Object.keys(constraints).length > 0) {
-                            track.applyConstraints(constraints).catch(() => {});
+                            track.applyConstraints({ focusMode: 'continuous' }).catch(() => {});
                         }
                     }
                 } catch(e) {}
             }, 1000);
 
-            // DUAL ENGINE: Quagga2 background scanner
+            // DUAL ENGINE: Quagga2 background scanner for 1D barcodes
             if (typeof Quagga !== 'undefined' && !window.quaggaLiveInterval) {
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1395,97 +1367,30 @@ document.addEventListener("DOMContentLoaded", () => {
                         locate: true
                     }, function(result) {
                         if (result && result.codeResult && result.codeResult.code && !isProcessing) {
-                            console.log("DUAL-ENGINE Quagga2:", result.codeResult.code);
+                            console.log("Quagga2:", result.codeResult.code);
                             handleCheckIn(result.codeResult.code);
                         }
                     });
                 }, 250);
             }
-        }
-
-        // === MAIN CAMERA OPEN LOGIC ===
-        
-        if (isIOS && (cameraId === "environment" || cameraId === "user")) {
-            // iOS Strategy: Pre-acquire stream with raw getUserMedia,
-            // extract real deviceId, then give it to html5-qrcode.
-            let facingMode = cameraId; // "environment" or "user"
+        }).catch(err => {
+            console.error("Camera failed:", err);
+            // One fallback: if rear failed, try front; if front failed, try rear
+            let fallbackConfig = (startConfig?.facingMode === "environment" || typeof startConfig === 'string')
+                ? { facingMode: "user" }
+                : { facingMode: "environment" };
             
-            navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: facingMode } },
-                audio: false
-            }).then(stream => {
-                // Got the stream! Extract deviceId from the track
-                const track = stream.getVideoTracks()[0];
-                const settings = track.getSettings();
-                const realDeviceId = settings.deviceId;
-                console.log("iOS: Pre-acquired camera. DeviceId:", realDeviceId, "FacingMode:", settings.facingMode);
-                
-                // Stop the pre-acquired stream (html5-qrcode will open its own)
-                stream.getTracks().forEach(t => t.stop());
-                
-                if (realDeviceId) {
-                    // Use the real deviceId
-                    startWithConfig(realDeviceId).then(() => {
-                        onCameraStarted();
-                    }).catch(err => {
-                        console.warn("iOS: deviceId failed, trying facingMode", err);
-                        startWithConfig({ facingMode: facingMode }).then(() => {
-                            onCameraStarted();
-                        }).catch(err2 => {
-                            handleCameraError(err2);
-                        });
-                    });
-                } else {
-                    // No deviceId in settings, try facingMode directly
-                    startWithConfig({ facingMode: facingMode }).then(() => {
-                        onCameraStarted();
-                    }).catch(err => {
-                        handleCameraError(err);
-                    });
-                }
-            }).catch(preErr => {
-                console.error("iOS: getUserMedia pre-acquisition failed:", preErr);
-                // Fallback: try html5-qrcode directly with facingMode
-                startWithConfig({ facingMode: facingMode }).then(() => {
-                    onCameraStarted();
-                }).catch(err => {
-                    // Last resort: try the other camera
-                    let altFacing = facingMode === "environment" ? "user" : "environment";
-                    startWithConfig({ facingMode: altFacing }).then(() => {
-                        onCameraStarted();
-                        showToast("Thông báo", "Không thể mở Camera " + (facingMode === "environment" ? "Sau" : "Trước") + ". Đã tự động chuyển sang camera còn lại.", "info");
-                    }).catch(err2 => {
-                        handleCameraError(preErr);
-                    });
-                });
+            html5QrcodeScanner.start(
+                fallbackConfig, scanConfig,
+                (decodedText) => handleCheckIn(decodedText),
+                (errorMessage) => { /* silently ignore */ }
+            ).then(() => {
+                loadCameras();
+                showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
+            }).catch(err2 => {
+                handleCameraError(err);
             });
-        } else {
-            // Non-iOS: use standard approach
-            let startConfig;
-            if (cameraId === "environment" || cameraId === "user") {
-                startConfig = { facingMode: cameraId };
-            } else {
-                startConfig = cameraId;
-            }
-            
-            startWithConfig(startConfig).then(() => {
-                onCameraStarted();
-            }).catch(err => {
-                console.error("Camera start failed:", err);
-                if (typeof startConfig === 'string') {
-                    startWithConfig({ facingMode: "environment" }).then(() => {
-                        onCameraStarted();
-                    }).catch(() => {
-                        startWithConfig({ facingMode: "user" }).then(() => {
-                            onCameraStarted();
-                            showToast("Thông báo", "Không thể mở Camera Sau. Đã tự động chuyển sang Camera Trước.", "info");
-                        }).catch(err3 => handleCameraError(err));
-                    });
-                } else {
-                    handleCameraError(err);
-                }
-            });
-        }
+        });
     }
 
     function handleCameraError(err) {
