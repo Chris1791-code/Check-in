@@ -1534,8 +1534,11 @@ document.addEventListener("DOMContentLoaded", () => {
             (errorMessage) => { /* silently ignore */ }
         ).then(() => {
             // Camera started successfully
-            loadCameras();
-            
+            // FIX: Do NOT call loadCameras() here. Html5Qrcode.getCameras() internally
+            // opens its own getUserMedia stream to read camera labels; on iOS that second
+            // stream steals/kills the camera that just started -> black/frozen screen.
+            // Labels are already loaded when the scanner tab is opened, so this is not needed.
+
             // Apply zoom and continuous focus
             setTimeout(() => {
                 try {
@@ -1609,7 +1612,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 (decodedText) => handleCheckIn(decodedText),
                 (errorMessage) => { /* silently ignore */ }
             ).then(() => {
-                loadCameras();
+                // FIX: Same as above — do not reload cameras here (would kill the stream on iOS).
                 showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
             }).catch(err2 => {
                 handleCameraError(err);
