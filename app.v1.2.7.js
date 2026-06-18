@@ -341,15 +341,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function stopCameraScan() {
-        if (html5QrcodeScanner && isScanning) {
+        if (html5QrcodeScanner) {
             try {
-                await window.stopQuaggaLive(); html5QrcodeScanner.stop();
+                await window.stopQuaggaLive();
+                await html5QrcodeScanner.stop(); // FIX: must await stop() so iOS releases camera hardware
                 html5QrcodeScanner.clear();
+                html5QrcodeScanner = null;
                 isScanning = false;
                 // Add delay for iOS hardware release
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 500));
             } catch (err) {
                 console.warn("Could not stop camera cleanly", err);
+                html5QrcodeScanner = null;
+                isScanning = false;
             }
         }
     }
@@ -1457,10 +1461,19 @@ document.addEventListener("DOMContentLoaded", () => {
         viewportWrapper.classList.add("active-scanning");
 
         const selectedCameraId = cameraSelect.value;
+        // FIX: If no camera selected, reload camera list first (handles iOS where permission
+        // was not yet granted when loadCameras() first ran on tab switch)
         if (!selectedCameraId) {
-            showToast("Lỗi camera", "Vui lòng chọn một thiết bị camera từ danh sách.", "error");
-            viewportWrapper.classList.remove("active-scanning");
-            cameraPlaceholder.classList.remove("hide");
+            loadCameras().then(() => {
+                const newSelected = cameraSelect.value;
+                if (!newSelected) {
+                    showToast("Lỗi camera", "Không tìm thấy camera. Vui lòng cấp quyền camera và thử lại.", "error");
+                    viewportWrapper.classList.remove("active-scanning");
+                    cameraPlaceholder.classList.remove("hide");
+                } else {
+                    initCameraScan(newSelected);
+                }
+            });
             return;
         }
 
@@ -1470,7 +1483,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (html5QrcodeScanner) {
-            window.stopQuaggaLive(); html5QrcodeScanner.stop().then(() => {
+            // FIX: await the stop() promise before restarting
+            window.stopQuaggaLive();
+            html5QrcodeScanner.stop().then(() => {
+                html5QrcodeScanner = null;
+                initCameraScan(selectedCameraId);
+            }).catch(() => {
+                html5QrcodeScanner = null;
                 initCameraScan(selectedCameraId);
             });
         } else {
@@ -1497,10 +1516,17 @@ document.addEventListener("DOMContentLoaded", () => {
             disableFlip: false
         };
 
-        // Simple config: facingMode for generic, deviceId for specific
-        let startConfig = (cameraId === "environment" || cameraId === "user")
-            ? { facingMode: cameraId }
-            : cameraId;
+        // FIX: On iOS (Chrome/Safari), passing a bare string like "environment" to facingMode
+        // is unreliable. We must pass a proper constraint object with { ideal: "..." }.
+        // Also, passing a deviceId directly works on desktop; on iOS we prefer facingMode.
+        let startConfig;
+        if (cameraId === "environment") {
+            startConfig = { facingMode: { ideal: "environment" } };
+        } else if (cameraId === "user") {
+            startConfig = { facingMode: { ideal: "user" } };
+        } else {
+            startConfig = { deviceId: { exact: cameraId } };
+        }
 
         html5QrcodeScanner.start(
             startConfig, scanConfig,
@@ -1569,10 +1595,14 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }).catch(err => {
             console.error("Camera failed:", err);
-            // One fallback: if rear failed, try front; if front failed, try rear
-            let fallbackConfig = (startConfig?.facingMode === "environment" || typeof startConfig === 'string')
-                ? { facingMode: "user" }
-                : { facingMode: "environment" };
+            // FIX: Use proper constraint objects for fallback too (iOS requirement)
+            let fallbackConfig;
+            const originalFacingMode = startConfig?.facingMode?.ideal || startConfig?.facingMode;
+            if (originalFacingMode === "environment" || typeof startConfig === 'object' && startConfig?.deviceId) {
+                fallbackConfig = { facingMode: { ideal: "user" } };
+            } else {
+                fallbackConfig = { facingMode: { ideal: "environment" } };
+            }
             
             html5QrcodeScanner.start(
                 fallbackConfig, scanConfig,
@@ -1591,14 +1621,19 @@ document.addEventListener("DOMContentLoaded", () => {
         let errMsg = `Không thể khởi động camera (${err.name || err.message || err}).`;
         const ua = navigator.userAgent.toLowerCase();
         const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
-        const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua));
+        const isChrome = /crios/.test(ua); // Chrome on iOS uses "CriOS"
+        const isWebView = /fbav|instagram|messenger|zalo|line|snapchat|wechat/.test(ua) || (isIOS && !/safari/.test(ua) && !isChrome);
         
         if (isWebView) {
             errMsg += " Bạn đang mở link trong trình duyệt Zalo/Facebook. Vui lòng bấm vào nút menu chia sẻ (3 dấu chấm) và chọn 'Mở bằng Safari' (trên iPhone) hoặc 'Mở bằng Chrome' (trên Android).";
         } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-            errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong cài đặt.";
+            if (isIOS) {
+                errMsg += " Trên iPhone, vào Cài đặt → " + (isChrome ? "Chrome" : "Safari") + " → Camera → cho phép truy cập. Sau đó tải lại trang.";
+            } else {
+                errMsg += " Bạn cần cấp quyền truy cập Camera cho trang web trong cài đặt.";
+            }
         } else if (isIOS) {
-            errMsg += " Trên iPhone, hãy thử mở bằng Safari thay vì Chrome để camera hoạt động tốt hơn.";
+            errMsg += " Trên iPhone hãy đảm bảo bạn đã cấp quyền Camera trong Cài đặt → " + (isChrome ? "Chrome" : "Safari") + " → Camera.";
         } else {
             errMsg += " Vui lòng thử chuyển sang thiết bị camera khác trong danh sách.";
         }
@@ -1631,7 +1666,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Initialize list of cameras
-    function loadCameras() {
+    async function loadCameras() {
         if (typeof Html5Qrcode === "undefined") {
             console.warn("Html5Qrcode library is not loaded. Camera scanning will be unavailable.");
             cameraSelect.innerHTML = `<option value="">Thư viện Camera không khả dụng</option>`;
@@ -1640,6 +1675,24 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             return;
         }
+
+        // FIX: On iOS (iPhone/iPad), enumerateDevices() only returns camera labels AFTER
+        // the user has already granted permission. We must call getUserMedia() first to
+        // trigger the permission prompt, then enumerate cameras.
+        const ua = navigator.userAgent.toLowerCase();
+        const isIOS = /ipad|iphone|ipod/.test(ua) && !window.MSStream;
+        if (isIOS) {
+            try {
+                // Request a minimal stream just to trigger iOS permission dialog
+                const tempStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+                tempStream.getTracks().forEach(t => t.stop()); // immediately release
+            } catch (permErr) {
+                console.warn("iOS camera permission denied:", permErr);
+                cameraSelect.innerHTML = `<option value="environment">📷 Camera Sau (Mặc định)</option><option value="user">🤳 Camera Trước (Mặc định)</option>`;
+                return;
+            }
+        }
+
         Html5Qrcode.getCameras().then(cameras => {
             let options = [];
             options.push('<option value="environment">📷 Camera Sau (Mặc định)</option>');
