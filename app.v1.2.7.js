@@ -1539,6 +1539,34 @@ document.addEventListener("DOMContentLoaded", () => {
             // stream steals/kills the camera that just started -> black/frozen screen.
             // Labels are already loaded when the scanner tab is opened, so this is not needed.
 
+            // FIX (iOS black video): force the inline-playback attributes and replay.
+            // On iOS a <video> with a MediaStream can stay black if it isn't muted +
+            // playsinline + actively playing (e.g. when it was created while hidden).
+            const ensureVideoPlays = () => {
+                const videoEl = document.querySelector("#qr-reader video");
+                if (!videoEl) return;
+                videoEl.setAttribute("playsinline", "true");
+                videoEl.setAttribute("webkit-playsinline", "true");
+                videoEl.setAttribute("autoplay", "true");
+                videoEl.muted = true;
+                videoEl.playsInline = true;
+                const pr = videoEl.play();
+                if (pr && pr.catch) pr.catch(() => {});
+            };
+            ensureVideoPlays();
+            setTimeout(ensureVideoPlays, 300);
+            setTimeout(ensureVideoPlays, 1000);
+
+            // TEMP DIAGNOSTIC: report the real video state on-screen so we can debug iOS
+            // black-screen without a Mac. Remove once the camera is confirmed working.
+            setTimeout(() => {
+                const v = document.querySelector("#qr-reader video");
+                if (!v) { showToast("DEBUG", "Không tìm thấy thẻ <video> trong #qr-reader", "error"); return; }
+                showToast("DEBUG camera",
+                    `size=${v.videoWidth}x${v.videoHeight} paused=${v.paused} ready=${v.readyState} muted=${v.muted} inline=${v.playsInline} tracks=${v.srcObject ? v.srcObject.getVideoTracks().length : 'none'}`,
+                    "info");
+            }, 1500);
+
             // Apply zoom and continuous focus
             setTimeout(() => {
                 try {
