@@ -1077,6 +1077,97 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // 📸 Capture Barcode: Opens native camera (iOS rear cam works!)
+    const btnCaptureBarcode = document.getElementById("btn-capture-barcode");
+    const captureInput = document.getElementById("capture-barcode-input");
+
+    if (btnCaptureBarcode && captureInput) {
+        btnCaptureBarcode.addEventListener("click", () => {
+            captureInput.click();
+        });
+
+        captureInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = "";
+
+            showToast("Đang phân tích", "Đang xử lý ảnh chụp barcode...", "info");
+
+            const tempDiv = document.createElement("div");
+            tempDiv.id = "temp-capture-scan-" + Date.now();
+            tempDiv.style.display = "none";
+            document.body.appendChild(tempDiv);
+
+            function captureHtml5Fallback(imageFile) {
+                const fileDecoder = new Html5Qrcode(tempDiv.id, {
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: false }
+                });
+                fileDecoder.scanFile(imageFile, true)
+                    .then(decodedText => {
+                        handleCheckIn(decodedText);
+                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                    })
+                    .catch(err => {
+                        console.error("Capture scan failed:", err);
+                        playNotificationSound("error");
+                        showToast("Quét thất bại", "Không tìm thấy mã QR hoặc barcode trong ảnh chụp. Hãy chụp gần hơn, đủ sáng và giữ thẻ thẳng.", "error");
+                        if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                    });
+            }
+
+            if (typeof Quagga !== 'undefined') {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    const canvas = document.createElement("canvas");
+                    const ctx = canvas.getContext("2d");
+                    const MAX_WIDTH = 1200;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > MAX_WIDTH) {
+                        height = Math.floor(height * (MAX_WIDTH / width));
+                        width = MAX_WIDTH;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    Quagga.decodeSingle({
+                        src: canvas.toDataURL("image/jpeg", 0.9),
+                        numOfWorkers: 0,
+                        inputStream: { size: width },
+                        decoder: {
+                            readers: [
+                                "code_128_reader", "code_39_reader", "code_93_reader",
+                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
+                                "i2of5_reader", "codabar_reader"
+                            ]
+                        },
+                        locate: true
+                    }, function(result) {
+                        if (result && result.codeResult && result.codeResult.code) {
+                            console.log("Capture Quagga2 decoded:", result.codeResult.code);
+                            handleCheckIn(result.codeResult.code);
+                            if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                        } else {
+                            captureHtml5Fallback(file);
+                        }
+                    });
+                };
+                img.onerror = function() {
+                    URL.revokeObjectURL(url);
+                    captureHtml5Fallback(file);
+                };
+                img.src = url;
+            } else {
+                captureHtml5Fallback(file);
+            }
+        });
+    }
+
     // IP Camera Stream Scanner Panel Toggle
     const btnToggleIpStream = document.getElementById("btn-toggle-ip-stream");
     const ipStreamInputCard = document.getElementById("ip-stream-input-card");
