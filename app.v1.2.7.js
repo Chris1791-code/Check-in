@@ -1030,41 +1030,90 @@ document.addEventListener("DOMContentLoaded", () => {
                 const url = URL.createObjectURL(file);
                 img.onload = function() {
                     URL.revokeObjectURL(url);
-                    const canvas = document.createElement("canvas");
-                    const ctx = canvas.getContext("2d");
-                    const MAX_WIDTH = 1200;
-                    let width = img.width;
-                    let height = img.height;
                     
-                    if (width > MAX_WIDTH) {
-                        height = Math.floor(height * (MAX_WIDTH / width));
-                        width = MAX_WIDTH;
+                    let found = false;
+                    let attempts = 0;
+                    const totalAttempts = 4;
+                    
+                    function tryDecode(canvasData, targetW, label) {
+                        Quagga.decodeSingle({
+                            src: canvasData,
+                            numOfWorkers: 0,
+                            inputStream: { size: targetW },
+                            decoder: {
+                                readers: [
+                                    "code_128_reader", "code_39_reader", "code_93_reader",
+                                    "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
+                                    "i2of5_reader", "codabar_reader"
+                                ]
+                            },
+                            locate: true
+                        }, function(result) {
+                            attempts++;
+                            if (found) return;
+                            if (result && result.codeResult && result.codeResult.code) {
+                                found = true;
+                                console.log("File decoded (" + label + "):", result.codeResult.code);
+                                handleCheckIn(result.codeResult.code);
+                                if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                            } else if (attempts >= totalAttempts && !found) {
+                                fallbackToHtml5QrCode(file);
+                            }
+                        });
                     }
                     
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
+                    let w = img.width, h = img.height;
                     
-                    Quagga.decodeSingle({
-                        src: canvas.toDataURL("image/jpeg", 0.9),
-                        numOfWorkers: 0,
-                        inputStream: { size: width },
-                        decoder: {
-                            readers: [
-                                "code_128_reader", "code_39_reader", "code_93_reader",
-                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "i2of5_reader"
-                            ]
-                        },
-                        locate: true
-                    }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code) {
-                            console.log("Quagga2 decoded 1D Barcode:", result.codeResult.code);
-                            handleCheckIn(result.codeResult.code);
-                            if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
-                        } else {
-                            fallbackToHtml5QrCode(file);
-                        }
-                    });
+                    // Pass 1: Full image with contrast
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let tw = Math.min(w, 1600);
+                        let th = Math.floor(h * (tw / w));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(140%) grayscale(100%)";
+                        ctx.drawImage(img, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "full");
+                    })();
+                    
+                    // Pass 2: Center crop 60%
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let cropW = Math.floor(w * 0.6), cropH = Math.floor(h * 0.6);
+                        let cropX = Math.floor((w - cropW) / 2), cropY = Math.floor((h - cropH) / 2);
+                        let tw = Math.min(cropW, 1200);
+                        let th = Math.floor(cropH * (tw / cropW));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(160%) grayscale(100%)";
+                        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "center60");
+                    })();
+                    
+                    // Pass 3: Center crop 40% with heavy contrast
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let cropW = Math.floor(w * 0.4), cropH = Math.floor(h * 0.4);
+                        let cropX = Math.floor((w - cropW) / 2), cropY = Math.floor((h - cropH) / 2);
+                        let tw = Math.min(cropW, 1000);
+                        let th = Math.floor(cropH * (tw / cropW));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(200%) brightness(110%) grayscale(100%)";
+                        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "center40-hc");
+                    })();
+                    
+                    // Pass 4: Full image raw (no filter)
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let tw = Math.min(w, 1400);
+                        let th = Math.floor(h * (tw / w));
+                        c.width = tw; c.height = th;
+                        ctx.drawImage(img, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "raw");
+                    })();
                 };
                 img.onerror = function() {
                     URL.revokeObjectURL(url);
@@ -1120,42 +1169,96 @@ document.addEventListener("DOMContentLoaded", () => {
                 const url = URL.createObjectURL(file);
                 img.onload = function() {
                     URL.revokeObjectURL(url);
-                    const canvas = document.createElement("canvas");
-                    const ctx = canvas.getContext("2d");
-                    const MAX_WIDTH = 1200;
-                    let width = img.width;
-                    let height = img.height;
                     
-                    if (width > MAX_WIDTH) {
-                        height = Math.floor(height * (MAX_WIDTH / width));
-                        width = MAX_WIDTH;
+                    // Multi-pass scanning: try different crops and filters
+                    let found = false;
+                    let attempts = 0;
+                    const totalAttempts = 4;
+                    
+                    function tryDecode(canvasData, targetW, label) {
+                        Quagga.decodeSingle({
+                            src: canvasData,
+                            numOfWorkers: 0,
+                            inputStream: { size: targetW },
+                            decoder: {
+                                readers: [
+                                    "code_128_reader", "code_39_reader", "code_93_reader",
+                                    "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
+                                    "i2of5_reader", "codabar_reader"
+                                ]
+                            },
+                            locate: true
+                        }, function(result) {
+                            attempts++;
+                            if (found) return;
+                            if (result && result.codeResult && result.codeResult.code) {
+                                found = true;
+                                console.log("Capture decoded (" + label + "):", result.codeResult.code);
+                                handleCheckIn(result.codeResult.code);
+                                if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+                            } else if (attempts >= totalAttempts && !found) {
+                                // All attempts failed, try Html5Qrcode as last resort
+                                captureHtml5Fallback(file);
+                            }
+                        });
                     }
                     
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
+                    let w = img.width, h = img.height;
                     
-                    Quagga.decodeSingle({
-                        src: canvas.toDataURL("image/jpeg", 0.9),
-                        numOfWorkers: 0,
-                        inputStream: { size: width },
-                        decoder: {
-                            readers: [
-                                "code_128_reader", "code_39_reader", "code_93_reader",
-                                "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
-                                "i2of5_reader", "codabar_reader"
-                            ]
-                        },
-                        locate: true
-                    }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code) {
-                            console.log("Capture Quagga2 decoded:", result.codeResult.code);
-                            handleCheckIn(result.codeResult.code);
-                            if (document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
-                        } else {
-                            captureHtml5Fallback(file);
-                        }
-                    });
+                    // Pass 1: Full image, high resolution
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let tw = Math.min(w, 1600);
+                        let th = Math.floor(h * (tw / w));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(140%) grayscale(100%)";
+                        ctx.drawImage(img, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "full");
+                    })();
+                    
+                    // Pass 2: Center crop 60% (barcode is likely in center of photo)
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let cropW = Math.floor(w * 0.6);
+                        let cropH = Math.floor(h * 0.6);
+                        let cropX = Math.floor((w - cropW) / 2);
+                        let cropY = Math.floor((h - cropH) / 2);
+                        let tw = Math.min(cropW, 1200);
+                        let th = Math.floor(cropH * (tw / cropW));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(160%) grayscale(100%)";
+                        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "center60");
+                    })();
+                    
+                    // Pass 3: Center crop 40% with heavy contrast
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let cropW = Math.floor(w * 0.4);
+                        let cropH = Math.floor(h * 0.4);
+                        let cropX = Math.floor((w - cropW) / 2);
+                        let cropY = Math.floor((h - cropH) / 2);
+                        let tw = Math.min(cropW, 1000);
+                        let th = Math.floor(cropH * (tw / cropW));
+                        c.width = tw; c.height = th;
+                        ctx.filter = "contrast(200%) brightness(110%) grayscale(100%)";
+                        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "center40-hc");
+                    })();
+                    
+                    // Pass 4: Full image no filter (raw)
+                    (function() {
+                        const c = document.createElement("canvas");
+                        const ctx = c.getContext("2d");
+                        let tw = Math.min(w, 1400);
+                        let th = Math.floor(h * (tw / w));
+                        c.width = tw; c.height = th;
+                        ctx.drawImage(img, 0, 0, tw, th);
+                        tryDecode(c.toDataURL("image/jpeg", 0.9), tw, "raw");
+                    })();
                 };
                 img.onerror = function() {
                     URL.revokeObjectURL(url);
