@@ -56,6 +56,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let isServerSyncEnabled = false;
 
+    // Default Google Apps Script Web App endpoint for Sheets sync. The app auto-connects
+    // to this if the user hasn't configured their own URL in Settings.
+    const DEFAULT_SHEETS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec";
+    function applyDefaultSheetsConfig() {
+        if (!state.settings) return;
+        // Only backfill when no URL has been configured yet — never override the user's choice.
+        if (!state.settings.sheets || !state.settings.sheets.scriptUrl) {
+            state.settings.sheets = { enabled: true, scriptUrl: DEFAULT_SHEETS_SCRIPT_URL };
+        }
+    }
+
     // --- SHARED UTILITIES FOR DE-DUPLICATION ---
     const isValidMatchValue = (val) => {
         if (!val) return false;
@@ -176,9 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
             localStorage.setItem("qr_settings", JSON.stringify(defaultSettings));
         }
         state.settings = JSON.parse(localStorage.getItem("qr_settings"));
-        if (!state.settings.sheets) {
-            state.settings.sheets = { enabled: false, scriptUrl: "" };
-        }
+        applyDefaultSheetsConfig();
 
         // Prepopulate scanner locations
         populateLocationDropdowns();
@@ -4397,7 +4406,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 if (data.settings) {
                     state.settings = data.settings;
-                    localStorage.setItem('qr_settings', JSON.stringify(data.settings));
+                    applyDefaultSheetsConfig(); // keep the default Sheets URL even if Firebase lacks it
+                    localStorage.setItem('qr_settings', JSON.stringify(state.settings));
                 }
             }
         });
