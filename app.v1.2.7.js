@@ -4470,11 +4470,11 @@ function doPost(e) {
   var ticketId = payload.id;
   var action = payload.action; // "checkin" or "add_customer"
   
-  // Find the ticket ID column
+  // Find the ticket ID column (trim headers; supports MSSV / mã số sinh viên...)
   var idColIdx = -1;
-  var possibleIdHeaders = ["Mã Vé / ID", "Mã Vé", "ID", "Id", "id", "Ticket ID", "TicketID", "Mã số", "Mã"];
+  var possibleIdHeaders = ["mssv", "mã số sinh viên", "mã số cán bộ", "mscb", "mã sv", "mã số", "mã vé / id", "mã vé", "mã số vé", "id", "ticket id", "ticketid", "mã"];
   for (var k = 0; k < headers.length; k++) {
-    if (possibleIdHeaders.map(function(h){return h.toLowerCase();}).indexOf(headers[k].toLowerCase()) !== -1) {
+    if (possibleIdHeaders.indexOf(String(headers[k]).trim().toLowerCase()) !== -1) {
       idColIdx = k;
       break;
     }
