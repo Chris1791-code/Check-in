@@ -1,6 +1,6 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260618d) — remove once camera is confirmed.
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260619a) — remove once camera is confirmed.
    Always-visible badge proves the new JS loaded, shows camera stages and any JS error. */
 (function () {
     function makeBadge() {
@@ -10,14 +10,14 @@ window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInter
         d.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:999999;max-width:92vw;" +
             "background:rgba(0,0,0,.85);color:#0f0;font:12px/1.35 monospace;padding:6px 8px;" +
             "border:1px solid #0f0;border-radius:6px;white-space:pre-wrap;word-break:break-word;";
-        d.textContent = "BUILD 20260618d • cam: idle";
+        d.textContent = "BUILD 20260619a • cam: idle";
         (document.body || document.documentElement).appendChild(d);
     }
     window.__camDbg = function (msg) {
         try {
             makeBadge();
             var d = document.getElementById("__cam_dbg");
-            if (d) d.textContent = "BUILD 20260618d • " + msg;
+            if (d) d.textContent = "BUILD 20260619a • " + msg;
         } catch (e) {}
     };
     window.addEventListener("error", function (e) {
@@ -1487,47 +1487,50 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function startScanning() {
+    // FIX: serialize all camera start/stop operations. Overlapping start()/stop()
+    // calls on the html5-qrcode instance throw "Cannot transition to a new state,
+    // already under transition" and leave the camera stuck on a black screen.
+    let camBusy = false;
+
+    async function startScanning() {
+        if (camBusy) { window.__camDbg("cam: đang bận, bỏ qua lần bấm"); return; }
+        camBusy = true;
         const cameraPlaceholder = document.getElementById("scanner-placeholder");
         const viewportWrapper = document.querySelector(".scanner-viewport-wrapper");
-        
-        cameraPlaceholder.classList.add("hide");
-        viewportWrapper.classList.add("active-scanning");
+        try {
+            cameraPlaceholder.classList.add("hide");
+            viewportWrapper.classList.add("active-scanning");
 
-        const selectedCameraId = cameraSelect.value;
-        // FIX: If no camera selected, reload camera list first (handles iOS where permission
-        // was not yet granted when loadCameras() first ran on tab switch)
-        if (!selectedCameraId) {
-            loadCameras().then(() => {
-                const newSelected = cameraSelect.value;
-                if (!newSelected) {
+            let selectedCameraId = cameraSelect.value;
+            // If no camera selected, reload camera list first (iOS: labels appear only
+            // after permission was granted).
+            if (!selectedCameraId) {
+                await loadCameras();
+                selectedCameraId = cameraSelect.value;
+                if (!selectedCameraId) {
                     showToast("Lỗi camera", "Không tìm thấy camera. Vui lòng cấp quyền camera và thử lại.", "error");
                     viewportWrapper.classList.remove("active-scanning");
                     cameraPlaceholder.classList.remove("hide");
-                } else {
-                    initCameraScan(newSelected);
+                    return;
                 }
-            });
-            return;
-        }
+            }
 
-        // Stop IP Stream scanner if active
-        if (ipStreamInterval) {
-            stopIpStreamScan();
-        }
+            // Stop IP Stream scanner if active
+            if (ipStreamInterval) {
+                stopIpStreamScan();
+            }
 
-        if (html5QrcodeScanner) {
-            // FIX: await the stop() promise before restarting
-            window.stopQuaggaLive();
-            html5QrcodeScanner.stop().then(() => {
+            // Fully tear down any existing scanner BEFORE starting a new one.
+            if (html5QrcodeScanner) {
+                window.stopQuaggaLive();
+                try { await html5QrcodeScanner.stop(); } catch (e) { /* may already be stopped */ }
+                try { html5QrcodeScanner.clear(); } catch (e) {}
                 html5QrcodeScanner = null;
-                initCameraScan(selectedCameraId);
-            }).catch(() => {
-                html5QrcodeScanner = null;
-                initCameraScan(selectedCameraId);
-            });
-        } else {
-            initCameraScan(selectedCameraId);
+            }
+
+            await initCameraScan(selectedCameraId);
+        } finally {
+            camBusy = false;
         }
     }
 
@@ -1563,7 +1566,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         window.__camDbg("cam: starting cfg=" + JSON.stringify(startConfig));
-        html5QrcodeScanner.start(
+        return html5QrcodeScanner.start(
             startConfig, scanConfig,
             (decodedText) => handleCheckIn(decodedText),
             (errorMessage) => { /* silently ignore */ }
