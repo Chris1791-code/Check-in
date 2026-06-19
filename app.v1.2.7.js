@@ -66,6 +66,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // IDs already sent to the sheet this session — prevents duplicate appends when the
     // no-cors POST can't return a rowNum and a pull hasn't reconciled yet.
     const pushedToSheetIds = new Set();
+    // How often the app pulls the sheet to reflect changes from other devices.
+    // (Check-in pushes are immediate, independent of this interval.)
+    const SHEETS_SYNC_INTERVAL_MS = 4000;
     function applyDefaultSheetsConfig() {
         if (!state.settings) return;
         // Backfill when no URL configured yet, or migrate a known-dead default URL.
@@ -4921,7 +4924,7 @@ function doPost(e) {
             pushedToSheetIds.add(String(toPush[i].id).trim()); // mark first so auto-sync won't double-push
             await postNewCustomerToGoogleSheets(toPush[i]);
             if (btn) btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy ${i + 1}/${toPush.length}...`;
-            await new Promise(r => setTimeout(r, 200)); // gentle pacing for Apps Script
+            await new Promise(r => setTimeout(r, 80)); // gentle pacing for Apps Script
         }
 
         if (btn) { btn.removeAttribute("disabled"); btn.innerHTML = `<i class="ri-upload-cloud-2-line"></i> Đẩy toàn bộ danh sách app lên Google Sheet`; }
@@ -4933,8 +4936,8 @@ function doPost(e) {
         stopSheetsSyncInterval();
         if (state.settings.sheets && state.settings.sheets.enabled && state.settings.sheets.scriptUrl) {
             syncWithGoogleSheets();
-            sheetsSyncIntervalId = setInterval(syncWithGoogleSheets, 10000);
-            console.log("Google Sheets auto-sync interval started (10s).");
+            sheetsSyncIntervalId = setInterval(syncWithGoogleSheets, SHEETS_SYNC_INTERVAL_MS);
+            console.log("Google Sheets auto-sync interval started (" + (SHEETS_SYNC_INTERVAL_MS / 1000) + "s).");
         }
     }
 
