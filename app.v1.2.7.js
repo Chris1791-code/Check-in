@@ -2186,6 +2186,7 @@ document.addEventListener("DOMContentLoaded", () => {
         customer.checkInTime = new Date().toISOString();
         customer.checkInLocation = location;
         customer.checkedBy = currentStaff;
+        customer.localCheckInAt = Date.now(); // protects this fresh check-in from a lagging pull
 
         // Log Checkin History Event
         const logRecord = {
@@ -4723,7 +4724,22 @@ function doPost(e) {
                         localUpdated = true;
                         showToast("Đồng bộ check-in", `Khách "${localCust.HoVaTen}" được check-in từ thiết bị khác.`, "info");
                     } else if (!isSheetCheckedIn && localCust.status === "Checked In") {
-                        postCheckInToGoogleSheets(localCust);
+                        // Sheet says NOT checked in, but local says checked in.
+                        // If the local check-in is recent (<60s) it just hasn't reached the
+                        // sheet yet -> push it. Otherwise the Sheet is authoritative: accept
+                        // the clear (admin removed a wrong check-in on the sheet).
+                        const age = Date.now() - (localCust.localCheckInAt || 0);
+                        if (age < 60000) {
+                            postCheckInToGoogleSheets(localCust);
+                        } else {
+                            localCust.status = "Pending";
+                            localCust.checkInTime = null;
+                            localCust.checkInLocation = null;
+                            localCust.checkedBy = null;
+                            localCust.localCheckInAt = 0;
+                            state.logs = state.logs.filter(l => l.customerId !== localCust.id);
+                            localUpdated = true;
+                        }
                     }
 
                     if (localCust.HoVaTen !== HoVaTen) { localCust.HoVaTen = HoVaTen; localUpdated = true; }
