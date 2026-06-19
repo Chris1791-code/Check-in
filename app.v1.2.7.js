@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260619d) — remove once camera is confirmed.
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260619e) — remove once camera is confirmed.
    Rolling log: proves new JS loaded, shows camera stages, JS errors + stack traces. */
 (function () {
-    var lines = ["BUILD 20260619d"];
+    var lines = ["BUILD 20260619e"];
     function makeBadge() {
         if (document.getElementById("__cam_dbg")) return;
         var d = document.createElement("div");
@@ -950,6 +950,13 @@ document.addEventListener("DOMContentLoaded", () => {
         'slot-3': null,
         'slot-4': null
     };
+    // Per-slot Quagga2 (1D barcode) background decode intervals
+    let slotQuaggaIntervals = {
+        'slot-1': null,
+        'slot-2': null,
+        'slot-3': null,
+        'slot-4': null
+    };
     const cameraSelect = document.getElementById("camera-select");
     const locationSelect = document.getElementById("scanner-location");
     const sessionCountEl = document.getElementById("session-checkin-count");
@@ -1640,7 +1647,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const ctx = canvas.getContext("2d", { willReadFrequently: true });
                 
                 window.quaggaLiveInterval = setInterval(() => {
-                    if (isProcessing) return;
+                    if (isProcessingCheckin) return; // FIX: was undefined `isProcessing` -> threw every tick, killing 1D barcode decode
                     const videoEl = document.querySelector("#qr-reader video");
                     if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
                     
@@ -1670,7 +1677,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         },
                         locate: true
                     }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code && !isProcessing) {
+                        if (result && result.codeResult && result.codeResult.code && !isProcessingCheckin) {
                             console.log("Quagga2:", result.codeResult.code);
                             handleCheckIn(result.codeResult.code);
                         }
@@ -1926,12 +1933,49 @@ document.addEventListener("DOMContentLoaded", () => {
         let startPromise = scanner.start(
             startConfig,
             slotScanConfig,
-            (decodedText) => handleSlotCheckIn(slotId, decodedText),
+            (decodedText) => handleCheckIn(decodedText, slotId),
             (errorMessage) => { /* silently ignore */ }
         );
 
         startPromise.then(() => {
             if (selectEl) selectEl.removeAttribute("disabled");
+
+            // DUAL ENGINE: Quagga2 background scanner so each slot also reads 1D barcodes.
+            if (typeof Quagga !== 'undefined' && !slotQuaggaIntervals[slotId]) {
+                const sCanvas = document.createElement("canvas");
+                const sCtx = sCanvas.getContext("2d", { willReadFrequently: true });
+                slotQuaggaIntervals[slotId] = setInterval(() => {
+                    if (isProcessingCheckin) return;
+                    const videoEl = document.querySelector(`#qr-reader-slot-${slotIndex} video`);
+                    if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
+                    let w = videoEl.videoWidth, h = videoEl.videoHeight;
+                    if (w === 0 || h === 0) return;
+                    let cropW = Math.floor(w * 0.9), cropH = Math.floor(h * 0.6);
+                    let cropX = Math.floor((w - cropW) / 2), cropY = Math.floor((h - cropH) / 2);
+                    let targetW = Math.min(cropW, 1200);
+                    let targetH = Math.floor(cropH * (targetW / cropW));
+                    sCanvas.width = targetW; sCanvas.height = targetH;
+                    sCtx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
+                    sCtx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+                    Quagga.decodeSingle({
+                        src: sCanvas.toDataURL("image/jpeg", 0.85),
+                        numOfWorkers: 0,
+                        inputStream: { size: targetW },
+                        decoder: {
+                            readers: ["code_128_reader","code_39_reader","code_93_reader",
+                                "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
+                                "i2of5_reader","codabar_reader"]
+                        },
+                        locate: true
+                    }, function(result) {
+                        if (result && result.codeResult && result.codeResult.code && !isProcessingCheckin) {
+                            console.log(`Quagga2 slot ${slotIndex}:`, result.codeResult.code);
+                            handleCheckIn(result.codeResult.code, slotId);
+                        }
+                    });
+                }, 300);
+            }
+
             setTimeout(() => {
                 try {
                     const videoEl = document.querySelector(`#qr-reader-slot-${slotIndex} video`);
@@ -1964,7 +2008,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     videoConstraints: { facingMode: "environment", width: { ideal: 1920 } }
                 });
                 scanner.start({ facingMode: "environment" }, fbConfig,
-                    (decodedText) => handleSlotCheckIn(slotId, decodedText),
+                    (decodedText) => handleCheckIn(decodedText, slotId),
                     (errorMessage) => { /* silently ignore */ }
                 ).catch(errFallback => {
                     showToast("Lỗi Camera iPhone", `Không thể mở camera Cổng ${slotIndex}. Vui lòng thử Safari.`, "error");
@@ -1990,6 +2034,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (placeholder) placeholder.classList.remove("hide");
         if (stopBtn) stopBtn.classList.add("hide");
         if (selectEl) selectEl.removeAttribute("disabled");
+
+        // Stop this slot's 1D barcode (Quagga) background loop
+        if (slotQuaggaIntervals[slotId]) {
+            clearInterval(slotQuaggaIntervals[slotId]);
+            slotQuaggaIntervals[slotId] = null;
+        }
 
         const scanner = activeScanners[slotId];
         if (scanner) {
