@@ -4427,8 +4427,7 @@ function doGet(e) {
   var data = sheet.getDataRange().getValues();
   if (data.length === 0) {
     return ContentService.createTextOutput(JSON.stringify([]))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   }
   var headers = data[0];
   var rows = [];
@@ -4447,8 +4446,7 @@ function doGet(e) {
   }
   
   return ContentService.createTextOutput(JSON.stringify(rows))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader("Access-Control-Allow-Origin", "*");
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -4529,8 +4527,7 @@ function doPost(e) {
     }
     
     return ContentService.createTextOutput(JSON.stringify({"status": "success", "rowNum": newRowNum}))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   } else {
     if (rowNum) {
       sheet.getRange(rowNum, statusCol).setValue("Checked In");
@@ -4538,12 +4535,10 @@ function doPost(e) {
       sheet.getRange(rowNum, locCol).setValue(payload.location || "Lối vào");
       sheet.getRange(rowNum, staffCol).setValue(payload.staff || "Nhân viên");
       return ContentService.createTextOutput(JSON.stringify({"status": "success"}))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+        .setMimeType(ContentService.MimeType.JSON);
     } else {
       return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": "Ticket ID not found"}))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+        .setMimeType(ContentService.MimeType.JSON);
     }
   }
 }
