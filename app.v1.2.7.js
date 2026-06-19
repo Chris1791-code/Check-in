@@ -1,31 +1,40 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260619a) — remove once camera is confirmed.
-   Always-visible badge proves the new JS loaded, shows camera stages and any JS error. */
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260619b) — remove once camera is confirmed.
+   Rolling log: proves new JS loaded, shows camera stages, JS errors + stack traces. */
 (function () {
+    var lines = ["BUILD 20260619b"];
     function makeBadge() {
         if (document.getElementById("__cam_dbg")) return;
         var d = document.createElement("div");
         d.id = "__cam_dbg";
-        d.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:999999;max-width:92vw;" +
-            "background:rgba(0,0,0,.85);color:#0f0;font:12px/1.35 monospace;padding:6px 8px;" +
+        d.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:999999;max-width:94vw;max-height:38vh;overflow:auto;" +
+            "background:rgba(0,0,0,.88);color:#0f0;font:11px/1.3 monospace;padding:6px 8px;" +
             "border:1px solid #0f0;border-radius:6px;white-space:pre-wrap;word-break:break-word;";
-        d.textContent = "BUILD 20260619a • cam: idle";
         (document.body || document.documentElement).appendChild(d);
+        render();
+    }
+    function render() {
+        var d = document.getElementById("__cam_dbg");
+        if (d) d.textContent = lines.join("\n");
     }
     window.__camDbg = function (msg) {
         try {
+            var t = new Date().toTimeString().slice(0, 8);
+            lines.push(t + " " + msg);
+            if (lines.length > 9) lines = [lines[0]].concat(lines.slice(-8));
             makeBadge();
-            var d = document.getElementById("__cam_dbg");
-            if (d) d.textContent = "BUILD 20260619a • " + msg;
+            render();
         } catch (e) {}
     };
     window.addEventListener("error", function (e) {
-        window.__camDbg("JS ERROR: " + (e.message || e.error || "?") + " @ " + (e.filename || "") + ":" + (e.lineno || ""));
+        var st = (e.error && e.error.stack) ? (" | " + String(e.error.stack).split("\n").slice(0, 3).join(" << ")) : "";
+        window.__camDbg("JS ERROR: " + (e.message || "?") + " @ " + (e.filename || "").split("/").pop() + ":" + (e.lineno || "") + st);
     });
     window.addEventListener("unhandledrejection", function (e) {
         var r = e.reason || {};
-        window.__camDbg("PROMISE REJECT: " + (r.name || "") + " " + (r.message || r));
+        var st = r.stack ? (" | " + String(r.stack).split("\n").slice(0, 4).join(" << ")) : "";
+        window.__camDbg("REJECT: " + (r.name || "") + " " + (r.message || r) + st);
     });
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", makeBadge);
@@ -1493,6 +1502,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let camBusy = false;
 
     async function startScanning() {
+        window.__camDbg("startScanning() camBusy=" + camBusy + " hasInstance=" + !!html5QrcodeScanner);
         if (camBusy) { window.__camDbg("cam: đang bận, bỏ qua lần bấm"); return; }
         camBusy = true;
         const cameraPlaceholder = document.getElementById("scanner-placeholder");
@@ -1535,6 +1545,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function initCameraScan(cameraId) {
+        window.__camDbg("initCameraScan(" + cameraId + ") new Html5Qrcode");
         html5QrcodeScanner = new Html5Qrcode("qr-reader", {
             experimentalFeatures: { useBarCodeDetectorIfSupported: false }
         });
