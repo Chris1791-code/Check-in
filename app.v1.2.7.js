@@ -4776,16 +4776,9 @@ function doPost(e) {
                 }
             });
 
-            // Upload local customers that are not on the sheet yet — but only once each.
-            // Guard against duplicates: skip if already on the sheet OR already pushed this session.
-            state.customers.forEach(localCust => {
-                const cid = localCust.id ? String(localCust.id).trim() : "";
-                if (!cid) return;
-                if (!localCust._rowNum && !sheetIds.has(cid) && !pushedToSheetIds.has(cid)) {
-                    pushedToSheetIds.add(cid);
-                    postNewCustomerToGoogleSheets(localCust);
-                }
-            });
+            // NOTE: do NOT mass-push local customers here. Auto-pushing the whole list on
+            // every pull floods the network (hundreds of serialized POSTs) and makes
+            // check-in pushes crawl. Bulk upload is done explicitly via the batch button.
 
             if (localUpdated) {
                 saveState("customers");
@@ -4921,16 +4914,37 @@ function doPost(e) {
         const btn = document.getElementById("btn-push-all-sheets");
         if (btn) { btn.setAttribute("disabled", "true"); btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy 0/${toPush.length}...`; }
 
-        for (let i = 0; i < toPush.length; i++) {
-            pushedToSheetIds.add(String(toPush[i].id).trim()); // mark first so auto-sync won't double-push
-            await postNewCustomerToGoogleSheets(toPush[i]);
-            if (btn) btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy ${i + 1}/${toPush.length}...`;
-            await new Promise(r => setTimeout(r, 80)); // gentle pacing for Apps Script
+        // FIX: send in BATCHES (one request per ~100 customers) instead of one request
+        // per customer. Apps Script processes each request serially (~1s each), so
+        // per-row pushing of hundreds takes minutes; batching makes it a few seconds.
+        const CHUNK = 100;
+        let sent = 0;
+        for (let i = 0; i < toPush.length; i += CHUNK) {
+            const chunk = toPush.slice(i, i + CHUNK);
+            chunk.forEach(c => pushedToSheetIds.add(String(c.id).trim()));
+            const customers = chunk.map(c => ({
+                id: c.id,
+                HoVaTen: c.HoVaTen || "",
+                SoDienThoai: c.SoDienThoai || "",
+                Email: c.Email || "",
+                status: c.status || "Pending"
+            }));
+            try {
+                await fetch(cfg.scriptUrl, {
+                    method: "POST",
+                    mode: "no-cors",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ action: "bulk_add", customers: customers })
+                });
+            } catch (e) { console.error("Bulk chunk failed:", e); }
+            sent += chunk.length;
+            if (btn) btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy ${sent}/${toPush.length}...`;
+            await new Promise(r => setTimeout(r, 400)); // small gap between batches
         }
 
         if (btn) { btn.removeAttribute("disabled"); btn.innerHTML = `<i class="ri-upload-cloud-2-line"></i> Đẩy toàn bộ danh sách app lên Google Sheet`; }
-        showToast("Hoàn tất", `Đã gửi ${toPush.length} khách lên Google Sheet. Đang đồng bộ lại để xác nhận...`, "success");
-        setTimeout(syncWithGoogleSheets, 2000);
+        showToast("Hoàn tất", `Đã gửi ${toPush.length} khách (theo lô) lên Google Sheet. Đang đồng bộ lại để xác nhận...`, "success");
+        setTimeout(syncWithGoogleSheets, 3000);
     }
 
     function startSheetsSyncInterval() {
