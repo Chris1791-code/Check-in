@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260619c) — remove once camera is confirmed.
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260619d) — remove once camera is confirmed.
    Rolling log: proves new JS loaded, shows camera stages, JS errors + stack traces. */
 (function () {
-    var lines = ["BUILD 20260619c"];
+    var lines = ["BUILD 20260619d"];
     function makeBadge() {
         if (document.getElementById("__cam_dbg")) return;
         var d = document.createElement("div");
@@ -1904,10 +1904,16 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        let startConfig = (cameraId === "environment" || cameraId === "user") ? { facingMode: cameraId } : cameraId;
-        
-        slotScanConfig.videoConstraints = { width: { ideal: 1920 } };
-        
+        const isFacing = (cameraId === "environment" || cameraId === "user");
+        let startConfig = isFacing ? { facingMode: cameraId } : cameraId;
+
+        // FIX: html5-qrcode IGNORES the first arg when videoConstraints is set, so the
+        // camera selection (facingMode/deviceId) MUST be inside videoConstraints —
+        // otherwise every slot falls back to the device default (front camera on iPhone).
+        slotScanConfig.videoConstraints = isFacing
+            ? { facingMode: cameraId, width: { ideal: 1920 } }
+            : { deviceId: { exact: cameraId }, width: { ideal: 1920 } };
+
         // CRITICAL FOR iOS: UI must be visible before starting camera
 
         if (slotEl) {
@@ -1951,9 +1957,14 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error(`Error starting slot ${slotId}:`, err);
             
             if (typeof startConfig === 'string') {
-                console.warn("Failed with deviceId, trying exact environment fallback", err);
-                scanner.start({ facingMode: "environment" }, slotScanConfig, 
-                    (decodedText) => handleSlotScan(slotId, decodedText), 
+                console.warn("Failed with deviceId, trying environment fallback", err);
+                // Rebuild config: the camera selection must live inside videoConstraints,
+                // and the failed deviceId must be replaced (not reused).
+                const fbConfig = Object.assign({}, slotScanConfig, {
+                    videoConstraints: { facingMode: "environment", width: { ideal: 1920 } }
+                });
+                scanner.start({ facingMode: "environment" }, fbConfig,
+                    (decodedText) => handleSlotCheckIn(slotId, decodedText),
                     (errorMessage) => { /* silently ignore */ }
                 ).catch(errFallback => {
                     showToast("Lỗi Camera iPhone", `Không thể mở camera Cổng ${slotIndex}. Vui lòng thử Safari.`, "error");
