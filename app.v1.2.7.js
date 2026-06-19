@@ -1,47 +1,4 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
-
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260619e) — remove once camera is confirmed.
-   Rolling log: proves new JS loaded, shows camera stages, JS errors + stack traces. */
-(function () {
-    var lines = ["BUILD 20260619e"];
-    function makeBadge() {
-        if (document.getElementById("__cam_dbg")) return;
-        var d = document.createElement("div");
-        d.id = "__cam_dbg";
-        d.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:999999;max-width:94vw;max-height:38vh;overflow:auto;" +
-            "background:rgba(0,0,0,.88);color:#0f0;font:11px/1.3 monospace;padding:6px 8px;" +
-            "border:1px solid #0f0;border-radius:6px;white-space:pre-wrap;word-break:break-word;";
-        (document.body || document.documentElement).appendChild(d);
-        render();
-    }
-    function render() {
-        var d = document.getElementById("__cam_dbg");
-        if (d) d.textContent = lines.join("\n");
-    }
-    window.__camDbg = function (msg) {
-        try {
-            var t = new Date().toTimeString().slice(0, 8);
-            lines.push(t + " " + msg);
-            if (lines.length > 9) lines = [lines[0]].concat(lines.slice(-8));
-            makeBadge();
-            render();
-        } catch (e) {}
-    };
-    window.addEventListener("error", function (e) {
-        var st = (e.error && e.error.stack) ? (" | " + String(e.error.stack).split("\n").slice(0, 3).join(" << ")) : "";
-        window.__camDbg("JS ERROR: " + (e.message || "?") + " @ " + (e.filename || "").split("/").pop() + ":" + (e.lineno || "") + st);
-    });
-    window.addEventListener("unhandledrejection", function (e) {
-        var r = e.reason || {};
-        var st = r.stack ? (" | " + String(r.stack).split("\n").slice(0, 4).join(" << ")) : "";
-        window.__camDbg("REJECT: " + (r.name || "") + " " + (r.message || r) + st);
-    });
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", makeBadge);
-    } else {
-        makeBadge();
-    }
-})();
 /* ==========================================================================
    CORE APPLICATION LOGIC FOR QR CHECK-IN SYSTEM
    Author: Antigravity Team
@@ -1509,8 +1466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let camBusy = false;
 
     async function startScanning() {
-        window.__camDbg("startScanning() camBusy=" + camBusy + " hasInstance=" + !!html5QrcodeScanner);
-        if (camBusy) { window.__camDbg("cam: đang bận, bỏ qua lần bấm"); return; }
+        if (camBusy) return; // an operation is already in flight; ignore this press
         camBusy = true;
         const cameraPlaceholder = document.getElementById("scanner-placeholder");
         const viewportWrapper = document.querySelector(".scanner-viewport-wrapper");
@@ -1552,7 +1508,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function initCameraScan(cameraId) {
-        window.__camDbg("initCameraScan(" + cameraId + ") new Html5Qrcode");
         html5QrcodeScanner = new Html5Qrcode("qr-reader", {
             experimentalFeatures: { useBarCodeDetectorIfSupported: false }
         });
@@ -1585,15 +1540,12 @@ document.addEventListener("DOMContentLoaded", () => {
             startConfig = { deviceId: { exact: cameraId } };
         }
 
-        window.__camDbg("cam: starting cfg=" + JSON.stringify(startConfig));
         return html5QrcodeScanner.start(
             startConfig, scanConfig,
             (decodedText) => handleCheckIn(decodedText),
             (errorMessage) => { /* silently ignore */ }
         ).then(() => {
             // Camera started successfully
-            const _v0 = document.querySelector("#qr-reader video");
-            window.__camDbg("cam: STARTED video=" + (_v0 ? (_v0.videoWidth + "x" + _v0.videoHeight + " paused=" + _v0.paused) : "NO <video>"));
             // FIX: Do NOT call loadCameras() here. Html5Qrcode.getCameras() internally
             // opens its own getUserMedia stream to read camera labels; on iOS that second
             // stream steals/kills the camera that just started -> black/frozen screen.
@@ -1616,16 +1568,6 @@ document.addEventListener("DOMContentLoaded", () => {
             ensureVideoPlays();
             setTimeout(ensureVideoPlays, 300);
             setTimeout(ensureVideoPlays, 1000);
-
-            // TEMP DIAGNOSTIC: report the real video state on-screen so we can debug iOS
-            // black-screen without a Mac. Remove once the camera is confirmed working.
-            setTimeout(() => {
-                const v = document.querySelector("#qr-reader video");
-                if (!v) { showToast("DEBUG", "Không tìm thấy thẻ <video> trong #qr-reader", "error"); return; }
-                showToast("DEBUG camera",
-                    `size=${v.videoWidth}x${v.videoHeight} paused=${v.paused} ready=${v.readyState} muted=${v.muted} inline=${v.playsInline} tracks=${v.srcObject ? v.srcObject.getVideoTracks().length : 'none'}`,
-                    "info");
-            }, 1500);
 
             // Apply zoom and continuous focus
             setTimeout(() => {
@@ -1686,7 +1628,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }).catch(err => {
             console.error("Camera failed:", err);
-            window.__camDbg("cam: START FAILED " + (err && err.message ? err.message : err) + " -> thử camera khác");
             // FIX: facingMode must be a plain string for html5-qrcode (NOT { ideal }).
             const orig = startConfig && startConfig.facingMode;
             const fallbackFacing = (orig === "environment" || (startConfig && startConfig.deviceId)) ? "user" : "environment";
@@ -1701,7 +1642,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     html5QrcodeScanner = new Html5Qrcode("qr-reader", {
                         experimentalFeatures: { useBarCodeDetectorIfSupported: false }
                     });
-                    window.__camDbg("cam: fallback starting facingMode=" + fallbackFacing);
                     return html5QrcodeScanner.start(
                         { facingMode: fallbackFacing }, scanConfig,
                         (decodedText) => handleCheckIn(decodedText),
@@ -1709,12 +1649,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     );
                 })
                 .then(() => {
-                    const _vf = document.querySelector("#qr-reader video");
-                    window.__camDbg("cam: FALLBACK STARTED video=" + (_vf ? (_vf.videoWidth + "x" + _vf.videoHeight) : "NO <video>"));
                     showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
                 })
                 .catch(err2 => {
-                    window.__camDbg("cam: FALLBACK FAILED " + (err2 && err2.message ? err2.message : err2));
                     handleCameraError(err);
                 });
         });
