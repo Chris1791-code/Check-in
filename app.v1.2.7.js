@@ -58,12 +58,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Default Google Apps Script Web App endpoint for Sheets sync. The app auto-connects
     // to this if the user hasn't configured their own URL in Settings.
-    const DEFAULT_SHEETS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec";
+    const DEFAULT_SHEETS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYMY7BJ4Vmps_B3E-zdLjxdR4jgHp4vKBFCMYGKImvU9YOS6IiLafpkPttyBUX42S8jA/exec";
+    // Older builds saved these now-dead endpoints; migrate them to the current one.
+    const DEPRECATED_SHEETS_SCRIPT_URLS = [
+        "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec"
+    ];
     function applyDefaultSheetsConfig() {
         if (!state.settings) return;
-        // Only backfill when no URL has been configured yet — never override the user's choice.
+        // Backfill when no URL configured yet, or migrate a known-dead default URL.
         if (!state.settings.sheets || !state.settings.sheets.scriptUrl) {
             state.settings.sheets = { enabled: true, scriptUrl: DEFAULT_SHEETS_SCRIPT_URL };
+        } else if (DEPRECATED_SHEETS_SCRIPT_URLS.indexOf(state.settings.sheets.scriptUrl) !== -1) {
+            state.settings.sheets.scriptUrl = DEFAULT_SHEETS_SCRIPT_URL;
+            state.settings.sheets.enabled = true;
         }
     }
 
