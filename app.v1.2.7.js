@@ -4576,6 +4576,12 @@ function doPost(e) {
         modalSheetsGuide.classList.remove("active");
     });
 
+    // Bulk push all local customers to the Google Sheet
+    const btnPushAllSheets = document.getElementById("btn-push-all-sheets");
+    if (btnPushAllSheets) {
+        btnPushAllSheets.addEventListener("click", () => { pushAllCustomersToSheets(); });
+    }
+
     // Copy script code
     btnCopyScriptCode.addEventListener("click", () => {
         const txt = document.getElementById("sheets-script-code");
@@ -4796,18 +4802,20 @@ function doPost(e) {
                 staff: customer.checkedBy || "Nhân viên trực"
             };
 
-            const response = await fetch(state.settings.sheets.scriptUrl, {
+            // FIX: use no-cors so the write reliably reaches Apps Script doPost.
+            // With cors mode the 302 redirect Apps Script returns can be blocked by the
+            // browser, so the write never lands. no-cors gives an opaque (unreadable)
+            // response, but doPost still executes and writes the row; the next pull
+            // reconciles any returned values.
+            await fetch(state.settings.sheets.scriptUrl, {
                 method: "POST",
-                mode: "cors",
+                mode: "no-cors",
                 headers: {
                     "Content-Type": "text/plain;charset=utf-8"
                 },
                 body: JSON.stringify(payload)
             });
-            const result = await response.json();
-            if (result && result.status === "success") {
-                console.log(`Successfully synced check-in for ${customer.HoVaTen} to Google Sheets.`);
-            }
+            console.log(`Đã gửi check-in cho ${customer.HoVaTen} lên Google Sheets.`);
         } catch (err) {
             console.error("Failed to post check-in to Google Sheets:", err);
         }
@@ -4837,23 +4845,73 @@ function doPost(e) {
                 }
             });
 
-            const response = await fetch(state.settings.sheets.scriptUrl, {
+            // FIX: no-cors so the append reliably reaches Apps Script doPost (see note above).
+            await fetch(state.settings.sheets.scriptUrl, {
                 method: "POST",
-                mode: "cors",
+                mode: "no-cors",
                 headers: {
                     "Content-Type": "text/plain;charset=utf-8"
                 },
                 body: JSON.stringify(payload)
             });
-            const result = await response.json();
-            if (result && result.status === "success") {
-                customer._rowNum = result.rowNum;
-                saveState("customers");
-                console.log(`Successfully synced new customer ${customer.HoVaTen} with row ${result.rowNum}.`);
-            }
+            console.log(`Đã gửi khách ${customer.HoVaTen} lên Google Sheets.`);
         } catch (err) {
             console.error("Failed to post new customer to Google Sheets:", err);
         }
+    }
+
+    // Push the whole local customer list up to the Google Sheet (one-time bulk upload).
+    // Skips customers whose ID already exists in the sheet to avoid duplicate rows.
+    async function pushAllCustomersToSheets() {
+        const cfg = state.settings.sheets;
+        if (!cfg || !cfg.scriptUrl) {
+            showToast("Chưa cấu hình", "Hãy nhập URL Google Apps Script và bấm Lưu & Đồng Bộ trước.", "warning");
+            return;
+        }
+        if (!cfg.enabled) {
+            showToast("Đồng bộ đang tắt", "Hãy bật 'Kích hoạt đồng bộ Google Sheets' và Lưu trước.", "warning");
+            return;
+        }
+
+        // Read existing IDs already on the sheet so we don't create duplicates.
+        const existingIds = new Set();
+        try {
+            const resp = await fetch(cfg.scriptUrl);
+            const rows = await resp.json();
+            if (Array.isArray(rows)) {
+                const idKeys = idPossibles.map(h => h.toLowerCase());
+                rows.forEach(r => {
+                    for (const k of Object.keys(r)) {
+                        if (idKeys.indexOf(k.toLowerCase()) !== -1 && r[k]) {
+                            existingIds.add(String(r[k]).trim());
+                            break;
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn("Could not read sheet before push:", e);
+        }
+
+        const toPush = (state.customers || []).filter(c => c && c.id && !existingIds.has(String(c.id).trim()));
+        if (toPush.length === 0) {
+            showToast("Không có gì để đẩy", "Tất cả khách trong app đã có trên Google Sheet.", "info");
+            return;
+        }
+
+        showToast("Đang đẩy dữ liệu", `Bắt đầu đẩy ${toPush.length} khách lên Google Sheet...`, "info");
+        const btn = document.getElementById("btn-push-all-sheets");
+        if (btn) { btn.setAttribute("disabled", "true"); btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy 0/${toPush.length}...`; }
+
+        for (let i = 0; i < toPush.length; i++) {
+            await postNewCustomerToGoogleSheets(toPush[i]);
+            if (btn) btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy ${i + 1}/${toPush.length}...`;
+            await new Promise(r => setTimeout(r, 200)); // gentle pacing for Apps Script
+        }
+
+        if (btn) { btn.removeAttribute("disabled"); btn.innerHTML = `<i class="ri-upload-cloud-2-line"></i> Đẩy toàn bộ danh sách app lên Google Sheet`; }
+        showToast("Hoàn tất", `Đã gửi ${toPush.length} khách lên Google Sheet. Đang đồng bộ lại để xác nhận...`, "success");
+        setTimeout(syncWithGoogleSheets, 2000);
     }
 
     function startSheetsSyncInterval() {
