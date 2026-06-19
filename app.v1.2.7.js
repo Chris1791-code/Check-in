@@ -1,4 +1,38 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
+
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260618d) — remove once camera is confirmed.
+   Always-visible badge proves the new JS loaded, shows camera stages and any JS error. */
+(function () {
+    function makeBadge() {
+        if (document.getElementById("__cam_dbg")) return;
+        var d = document.createElement("div");
+        d.id = "__cam_dbg";
+        d.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:999999;max-width:92vw;" +
+            "background:rgba(0,0,0,.85);color:#0f0;font:12px/1.35 monospace;padding:6px 8px;" +
+            "border:1px solid #0f0;border-radius:6px;white-space:pre-wrap;word-break:break-word;";
+        d.textContent = "BUILD 20260618d • cam: idle";
+        (document.body || document.documentElement).appendChild(d);
+    }
+    window.__camDbg = function (msg) {
+        try {
+            makeBadge();
+            var d = document.getElementById("__cam_dbg");
+            if (d) d.textContent = "BUILD 20260618d • " + msg;
+        } catch (e) {}
+    };
+    window.addEventListener("error", function (e) {
+        window.__camDbg("JS ERROR: " + (e.message || e.error || "?") + " @ " + (e.filename || "") + ":" + (e.lineno || ""));
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+        var r = e.reason || {};
+        window.__camDbg("PROMISE REJECT: " + (r.name || "") + " " + (r.message || r));
+    });
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", makeBadge);
+    } else {
+        makeBadge();
+    }
+})();
 /* ==========================================================================
    CORE APPLICATION LOGIC FOR QR CHECK-IN SYSTEM
    Author: Antigravity Team
@@ -1528,12 +1562,15 @@ document.addEventListener("DOMContentLoaded", () => {
             startConfig = { deviceId: { exact: cameraId } };
         }
 
+        window.__camDbg("cam: starting cfg=" + JSON.stringify(startConfig));
         html5QrcodeScanner.start(
             startConfig, scanConfig,
             (decodedText) => handleCheckIn(decodedText),
             (errorMessage) => { /* silently ignore */ }
         ).then(() => {
             // Camera started successfully
+            const _v0 = document.querySelector("#qr-reader video");
+            window.__camDbg("cam: STARTED video=" + (_v0 ? (_v0.videoWidth + "x" + _v0.videoHeight + " paused=" + _v0.paused) : "NO <video>"));
             // FIX: Do NOT call loadCameras() here. Html5Qrcode.getCameras() internally
             // opens its own getUserMedia stream to read camera labels; on iOS that second
             // stream steals/kills the camera that just started -> black/frozen screen.
@@ -1626,6 +1663,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }).catch(err => {
             console.error("Camera failed:", err);
+            window.__camDbg("cam: START FAILED " + (err && err.name ? err.name : err) + " -> thử camera khác");
             // FIX: Use proper constraint objects for fallback too (iOS requirement)
             let fallbackConfig;
             const originalFacingMode = startConfig?.facingMode?.ideal || startConfig?.facingMode;
@@ -1641,8 +1679,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 (errorMessage) => { /* silently ignore */ }
             ).then(() => {
                 // FIX: Same as above — do not reload cameras here (would kill the stream on iOS).
+                const _vf = document.querySelector("#qr-reader video");
+                window.__camDbg("cam: FALLBACK STARTED video=" + (_vf ? (_vf.videoWidth + "x" + _vf.videoHeight) : "NO <video>"));
                 showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
             }).catch(err2 => {
+                window.__camDbg("cam: FALLBACK FAILED " + (err2 && err2.name ? err2.name : err2));
                 handleCameraError(err);
             });
         });
