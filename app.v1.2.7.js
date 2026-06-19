@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN DEBUG PANEL (build 20260619b) — remove once camera is confirmed.
+/* TEMP ON-SCREEN DEBUG PANEL (build 20260619c) — remove once camera is confirmed.
    Rolling log: proves new JS loaded, shows camera stages, JS errors + stack traces. */
 (function () {
-    var lines = ["BUILD 20260619b"];
+    var lines = ["BUILD 20260619c"];
     function makeBadge() {
         if (document.getElementById("__cam_dbg")) return;
         var d = document.createElement("div");
@@ -1564,14 +1564,16 @@ document.addEventListener("DOMContentLoaded", () => {
             disableFlip: false
         };
 
-        // FIX: On iOS (Chrome/Safari), passing a bare string like "environment" to facingMode
-        // is unreliable. We must pass a proper constraint object with { ideal: "..." }.
-        // Also, passing a deviceId directly works on desktop; on iOS we prefer facingMode.
+        // FIX: html5-qrcode's start() only accepts facingMode as a plain STRING
+        // ("environment"/"user") or { exact: "..." }. Passing { ideal: "..." } makes the
+        // library reject with "'facingMode' should be string or object with exact as key",
+        // which then leaves the scanner stuck and triggers "already under transition".
+        // Use the bare string (lenient — won't Overconstrain on devices with one camera).
         let startConfig;
         if (cameraId === "environment") {
-            startConfig = { facingMode: { ideal: "environment" } };
+            startConfig = { facingMode: "environment" };
         } else if (cameraId === "user") {
-            startConfig = { facingMode: { ideal: "user" } };
+            startConfig = { facingMode: "user" };
         } else {
             startConfig = { deviceId: { exact: cameraId } };
         }
@@ -1677,29 +1679,37 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }).catch(err => {
             console.error("Camera failed:", err);
-            window.__camDbg("cam: START FAILED " + (err && err.name ? err.name : err) + " -> thử camera khác");
-            // FIX: Use proper constraint objects for fallback too (iOS requirement)
-            let fallbackConfig;
-            const originalFacingMode = startConfig?.facingMode?.ideal || startConfig?.facingMode;
-            if (originalFacingMode === "environment" || typeof startConfig === 'object' && startConfig?.deviceId) {
-                fallbackConfig = { facingMode: { ideal: "user" } };
-            } else {
-                fallbackConfig = { facingMode: { ideal: "environment" } };
-            }
-            
-            html5QrcodeScanner.start(
-                fallbackConfig, scanConfig,
-                (decodedText) => handleCheckIn(decodedText),
-                (errorMessage) => { /* silently ignore */ }
-            ).then(() => {
-                // FIX: Same as above — do not reload cameras here (would kill the stream on iOS).
-                const _vf = document.querySelector("#qr-reader video");
-                window.__camDbg("cam: FALLBACK STARTED video=" + (_vf ? (_vf.videoWidth + "x" + _vf.videoHeight) : "NO <video>"));
-                showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
-            }).catch(err2 => {
-                window.__camDbg("cam: FALLBACK FAILED " + (err2 && err2.name ? err2.name : err2));
-                handleCameraError(err);
-            });
+            window.__camDbg("cam: START FAILED " + (err && err.message ? err.message : err) + " -> thử camera khác");
+            // FIX: facingMode must be a plain string for html5-qrcode (NOT { ideal }).
+            const orig = startConfig && startConfig.facingMode;
+            const fallbackFacing = (orig === "environment" || (startConfig && startConfig.deviceId)) ? "user" : "environment";
+
+            // A start() that failed leaves the instance in a broken state -> recreate it,
+            // otherwise the retry throws "already under transition".
+            return Promise.resolve()
+                .then(() => { try { return html5QrcodeScanner.stop(); } catch (e) {} })
+                .catch(() => {})
+                .then(() => {
+                    try { html5QrcodeScanner.clear(); } catch (e) {}
+                    html5QrcodeScanner = new Html5Qrcode("qr-reader", {
+                        experimentalFeatures: { useBarCodeDetectorIfSupported: false }
+                    });
+                    window.__camDbg("cam: fallback starting facingMode=" + fallbackFacing);
+                    return html5QrcodeScanner.start(
+                        { facingMode: fallbackFacing }, scanConfig,
+                        (decodedText) => handleCheckIn(decodedText),
+                        (errorMessage) => { /* silently ignore */ }
+                    );
+                })
+                .then(() => {
+                    const _vf = document.querySelector("#qr-reader video");
+                    window.__camDbg("cam: FALLBACK STARTED video=" + (_vf ? (_vf.videoWidth + "x" + _vf.videoHeight) : "NO <video>"));
+                    showToast("Thông báo", "Camera yêu cầu không khả dụng. Đã tự động chuyển sang camera khác.", "info");
+                })
+                .catch(err2 => {
+                    window.__camDbg("cam: FALLBACK FAILED " + (err2 && err2.message ? err2.message : err2));
+                    handleCameraError(err);
+                });
         });
     }
 
