@@ -63,6 +63,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const DEPRECATED_SHEETS_SCRIPT_URLS = [
         "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec"
     ];
+    // IDs already sent to the sheet this session — prevents duplicate appends when the
+    // no-cors POST can't return a rowNum and a pull hasn't reconciled yet.
+    const pushedToSheetIds = new Set();
     function applyDefaultSheetsConfig() {
         if (!state.settings) return;
         // Backfill when no URL configured yet, or migrate a known-dead default URL.
@@ -4672,6 +4675,7 @@ function doPost(e) {
 
             let localUpdated = false;
             const tempCustomers = [...state.customers];
+            const sheetIds = new Set(); // every ticketId currently present on the sheet
 
             sheetRows.forEach(row => {
                 const HoVaTen = nameCol ? String(row[nameCol] || "").trim() : "";
@@ -4681,6 +4685,7 @@ function doPost(e) {
                 const Email = emailCol ? String(row[emailCol] || "").trim() : "";
                 const ticketId = idCol ? String(row[idCol] || "").trim() : "";
                 if (!ticketId) return;
+                sheetIds.add(ticketId);
 
                 const sheetStatus = String(row[statusHeader] || "").trim();
                 const isSheetCheckedIn = (sheetStatus.toLowerCase() === "checked in" || sheetStatus === "da check-in" || sheetStatus === "CheckedIn" || sheetStatus === "Checked In");
@@ -4767,8 +4772,13 @@ function doPost(e) {
                 }
             });
 
+            // Upload local customers that are not on the sheet yet — but only once each.
+            // Guard against duplicates: skip if already on the sheet OR already pushed this session.
             state.customers.forEach(localCust => {
-                if (!localCust._rowNum) {
+                const cid = localCust.id ? String(localCust.id).trim() : "";
+                if (!cid) return;
+                if (!localCust._rowNum && !sheetIds.has(cid) && !pushedToSheetIds.has(cid)) {
+                    pushedToSheetIds.add(cid);
                     postNewCustomerToGoogleSheets(localCust);
                 }
             });
@@ -4893,7 +4903,11 @@ function doPost(e) {
             console.warn("Could not read sheet before push:", e);
         }
 
-        const toPush = (state.customers || []).filter(c => c && c.id && !existingIds.has(String(c.id).trim()));
+        const toPush = (state.customers || []).filter(c => {
+            if (!c || !c.id) return false;
+            const cid = String(c.id).trim();
+            return !existingIds.has(cid) && !pushedToSheetIds.has(cid);
+        });
         if (toPush.length === 0) {
             showToast("Không có gì để đẩy", "Tất cả khách trong app đã có trên Google Sheet.", "info");
             return;
@@ -4904,6 +4918,7 @@ function doPost(e) {
         if (btn) { btn.setAttribute("disabled", "true"); btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy 0/${toPush.length}...`; }
 
         for (let i = 0; i < toPush.length; i++) {
+            pushedToSheetIds.add(String(toPush[i].id).trim()); // mark first so auto-sync won't double-push
             await postNewCustomerToGoogleSheets(toPush[i]);
             if (btn) btn.innerHTML = `<i class="ri-loader-4-line"></i> Đang đẩy ${i + 1}/${toPush.length}...`;
             await new Promise(r => setTimeout(r, 200)); // gentle pacing for Apps Script
