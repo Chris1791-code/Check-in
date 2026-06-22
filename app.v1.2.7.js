@@ -1,4 +1,30 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
+
+/* TEMP ON-SCREEN SYNC DEBUG (build 20260619v) — remove once Sheet sync confirmed.
+   Always-visible panel: proves the build loaded, logs every check-in/sync step. */
+(function () {
+    var lines = ["SYNC DEBUG • BUILD 20260619v"];
+    function makeBadge() {
+        if (document.getElementById("__sync_dbg")) return;
+        var d = document.createElement("div");
+        d.id = "__sync_dbg";
+        d.style.cssText = "position:fixed;right:6px;bottom:6px;z-index:999999;max-width:96vw;max-height:42vh;overflow:auto;" +
+            "background:rgba(0,0,40,.92);color:#7df9ff;font:11px/1.35 monospace;padding:6px 8px;" +
+            "border:1px solid #7df9ff;border-radius:6px;white-space:pre-wrap;word-break:break-word;";
+        (document.body || document.documentElement).appendChild(d);
+        render();
+    }
+    function render() { var d = document.getElementById("__sync_dbg"); if (d) d.textContent = lines.join("\n"); }
+    window.__syncDbg = function (msg) {
+        try {
+            lines.push(new Date().toTimeString().slice(0, 8) + " " + msg);
+            if (lines.length > 12) lines = [lines[0]].concat(lines.slice(-11));
+            makeBadge(); render();
+        } catch (e) {}
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", makeBadge);
+    else makeBadge();
+})();
 /* ==========================================================================
    CORE APPLICATION LOGIC FOR QR CHECK-IN SYSTEM
    Author: Antigravity Team
@@ -2193,10 +2219,11 @@ document.addEventListener("DOMContentLoaded", () => {
             ticketId = ticketId.substring(10);
         }
 
-        const customer = state.customers.find(c => 
-            (c.id && c.id.toLowerCase() === ticketId.toLowerCase()) || 
+        const customer = state.customers.find(c =>
+            (c.id && c.id.toLowerCase() === ticketId.toLowerCase()) ||
             (c.qrCode && c.qrCode.toLowerCase() === cleanQrData.toLowerCase())
         );
+        window.__syncDbg("QUÉT id=" + ticketId + " | tìm thấy=" + (customer ? (customer.id + " status=" + customer.status) : "KHÔNG"));
 
         if (!customer) {
             // ERROR: CUSTOMER NOT FOUND
@@ -2210,15 +2237,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const currentStaff = state.currentUser ? state.currentUser.name : "Nhân viên trực";
 
         if (customer.status === "Checked In") {
-            // WARN: ALREADY CHECKED-IN
+            // WARN: ALREADY CHECKED-IN — but still push so the Sheet reflects the status
+            // (the person may have been checked in locally before sync was working).
             playNotificationSound("error");
-            
+
             const checkedTime = new Date(customer.checkInTime).toLocaleTimeString('vi-VN');
             const alertText = `${customer.HoVaTen} đã check-in lúc ${checkedTime} tại ${customer.checkInLocation}`;
-            
+
             flashScannerOverlay("error", "Đã check-in", alertText, slotId);
             showToast("Đã check-in trước đó", alertText, "warning");
-            
+            window.__syncDbg("Đã check-in trước đó -> vẫn đẩy lại lên Sheet");
+            postCheckInToGoogleSheets(customer);
+
             renderScannedCard(customer, true);
             return;
         }
@@ -4864,6 +4894,7 @@ function doPost(e) {
     async function postCheckInToGoogleSheets(customer) {
         // Resolve a URL even if settings are missing/disabled — check-ins must always sync.
         const resolvedUrl = (state.settings && state.settings.sheets && state.settings.sheets.scriptUrl) || DEFAULT_SHEETS_SCRIPT_URL;
+        window.__syncDbg("ĐẨY check-in " + customer.id + " -> ...?" + (resolvedUrl ? resolvedUrl.slice(-14) : "KHÔNG URL"));
         if (!resolvedUrl) return;
         if (!state.settings.sheets) state.settings.sheets = { enabled: true, scriptUrl: resolvedUrl };
         try {
@@ -4890,6 +4921,7 @@ function doPost(e) {
                 },
                 body: JSON.stringify(payload)
             });
+            window.__syncDbg("Đã gửi POST (no-cors) xong, đang xác minh...");
             console.log(`Đã gửi check-in cho ${customer.HoVaTen} lên Google Sheets.`);
 
             // VERIFY: read the sheet back and confirm this check-in actually landed.
@@ -4904,17 +4936,20 @@ function doPost(e) {
                         row = rows.find(r => Object.keys(r).some(k => idKeys.indexOf(k.toLowerCase()) !== -1 && String(r[k]).trim() === myId));
                     }
                     if (!row) {
+                        window.__syncDbg("XÁC MINH: KHÔNG thấy mã " + myId + " trên Sheet");
                         showToast("Sheet: không thấy mã", `Mã "${myId}" (${customer.HoVaTen}) không có dòng nào trên Google Sheet → không ghi được. Hãy bấm "Đẩy toàn bộ" trước.`, "error");
                         return;
                     }
                     const stKey = Object.keys(row).find(k => k.toLowerCase().indexOf("trạng thái") !== -1 || k.toLowerCase().indexOf("status") !== -1);
                     const st = stKey ? String(row[stKey]).trim().toLowerCase() : "";
                     if (st === "checked in") {
+                        window.__syncDbg("XÁC MINH OK: " + myId + " = Checked In trên Sheet ✓");
                         showToast("Đồng bộ Sheet ✓", `${customer.HoVaTen} đã cập nhật lên Google Sheet.`, "success");
                     } else {
+                        window.__syncDbg("XÁC MINH: " + myId + " trên Sheet vẫn = '" + (stKey ? row[stKey] : "?") + "'");
                         showToast("Sheet chưa nhận", `${customer.HoVaTen}: trên Sheet vẫn "${stKey ? row[stKey] : '?'}". Kiểm tra URL Apps Script (đang dùng ...${sheetUrl.slice(-12)}).`, "warning");
                     }
-                } catch (e) { /* ignore verify errors */ }
+                } catch (e) { window.__syncDbg("XÁC MINH lỗi (đọc Sheet thất bại): " + (e && e.message ? e.message : e)); }
             }, 2500);
         } catch (err) {
             console.error("Failed to post check-in to Google Sheets:", err);
