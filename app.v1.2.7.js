@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN SYNC DEBUG (build 20260619z) — remove once Sheet sync confirmed.
+/* TEMP ON-SCREEN SYNC DEBUG (build 20260620a) — remove once Sheet sync confirmed.
    Always-visible panel: proves the build loaded, logs every check-in/sync step. */
 (function () {
-    var lines = ["SYNC DEBUG • BUILD 20260619z"];
+    var lines = ["SYNC DEBUG • BUILD 20260620a"];
     function makeBadge() {
         if (document.getElementById("__sync_dbg")) return;
         var d = document.createElement("div");
@@ -2266,9 +2266,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             flashScannerOverlay("error", "Đã check-in", alertText, slotId);
             showToast("Đã check-in trước đó", alertText, "warning");
-            window.__syncDbg("Đã check-in trước đó -> trước khi gọi đẩy");
-            try { postCheckInToGoogleSheets(customer); } catch (errPush) { window.__syncDbg("‼ Lỗi gọi đẩy: " + (errPush && errPush.message ? errPush.message : errPush)); }
-            window.__syncDbg("-> sau khi gọi đẩy");
+            if (window.__postCheckInToSheets) window.__postCheckInToSheets(customer);
 
             renderScannedCard(customer, true);
             return;
@@ -2298,10 +2296,10 @@ document.addEventListener("DOMContentLoaded", () => {
         saveState("customers");
         saveState("logs");
 
-        // Always push the check-in to Google Sheets (postCheckInToGoogleSheets resolves the
-        // URL itself, falling back to the default). Never gate this on the enabled flag —
-        // a stale enabled=false was silently dropping every check-in push.
-        postCheckInToGoogleSheets(customer);
+        // Always push the check-in to Google Sheets. NOTE: postCheckInToGoogleSheets lives
+        // inside bootApp's scope, so it is reached via window.__postCheckInToSheets (set in
+        // bootApp). Calling the bare name here throws "Can't find variable".
+        if (window.__postCheckInToSheets) window.__postCheckInToSheets(customer);
 
         // UI Feedback
         playNotificationSound("success");
@@ -5155,6 +5153,11 @@ function doPost(e) {
             startSheetsSyncInterval();
             updateSheetsSyncIndicator("success");
         }
+
+        // FIX (root cause of check-in never syncing): postCheckInToGoogleSheets is declared
+        // INSIDE bootApp, so handleCheckIn (defined at the outer DOMContentLoaded scope) could
+        // not see it — every check-in push threw "Can't find variable" silently. Expose it.
+        window.__postCheckInToSheets = postCheckInToGoogleSheets;
     }
 
     bootApp();
