@@ -2,27 +2,11 @@
 const INITIAL_USERS = [
     {
         id: "usr-admin",
-        email: "admin@qrcheckin.com",
-        password: "admin123",
-        name: "Nguyễn Văn Admin",
+        email: "mchieu.nguyen@gmail.com",
+        password: "Minhga@678548",
+        name: "Nguyễn Minh Chiêu",
         role: "admin", // admin, manager, user
         department: "Ban Tổ Chức"
-    },
-    {
-        id: "usr-manager",
-        email: "manager@qrcheckin.com",
-        password: "manager123",
-        name: "Trần Thị Manager",
-        role: "manager",
-        department: "Khu Vực A"
-    },
-    {
-        id: "usr-user",
-        email: "user@qrcheckin.com",
-        password: "user123",
-        name: "Lê Văn CheckIn",
-        role: "user",
-        department: "Cổng Đón Khách 1"
     }
 ];
 

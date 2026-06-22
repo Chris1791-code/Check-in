@@ -63,13 +63,13 @@
                     <form id="login-form" class="login-form">
                         <div class="form-group">
                             <label for="login-email"><i class="ri-mail-line"></i> Email đăng nhập</label>
-                            <input type="email" id="login-email" required placeholder="nhanvien@qrcheckin.com" value="admin@qrcheckin.com">
+                            <input type="email" id="login-email" required placeholder="Nhập email đăng nhập" autocomplete="off">
                         </div>
 
                         <div class="form-group">
                             <label for="login-password"><i class="ri-lock-password-line"></i> Mật khẩu</label>
                             <div class="password-input-wrapper">
-                                <input type="password" id="login-password" required placeholder="••••••••" value="admin123">
+                                <input type="password" id="login-password" required placeholder="••••••••" autocomplete="off">
                                 <button type="button" id="btn-toggle-password" class="btn-icon-plain">
                                     <i class="ri-eye-line"></i>
                                 </button>
@@ -91,20 +91,6 @@
                         </button>
                     </form>
 
-                    <div class="login-accounts-hint">
-                        <p class="hint-title"><i class="ri-information-line"></i> Tài khoản chạy thử nghiệm nhanh:</p>
-                        <div class="hint-badges">
-                            <button type="button" class="badge-account" data-email="admin@qrcheckin.com" data-pass="admin123">
-                                <span class="role admin">Admin</span> admin123
-                            </button>
-                            <button type="button" class="badge-account" data-email="manager@qrcheckin.com" data-pass="manager123">
-                                <span class="role manager">Manager</span> manager123
-                            </button>
-                            <button type="button" class="badge-account" data-email="user@qrcheckin.com" data-pass="user123">
-                                <span class="role user">User</span> user123
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1529,6 +1515,6 @@
     <script src="mock-data.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <script src="app.v1.2.7.js?v=20260619q"></script>
+    <script src="app.v1.2.7.js?v=20260619r"></script>
 </body>
 </html>

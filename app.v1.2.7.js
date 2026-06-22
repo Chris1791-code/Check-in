@@ -68,6 +68,40 @@ document.addEventListener("DOMContentLoaded", () => {
     // IDs already sent to the sheet this session — prevents duplicate appends when the
     // no-cors POST can't return a rowNum and a pull hasn't reconciled yet.
     const pushedToSheetIds = new Set();
+
+    // The real admin account. ensureAdminAccount() guarantees it exists and removes the
+    // old demo accounts, applied to existing localStorage/Firebase data (not just fresh installs).
+    const ADMIN_ACCOUNT = {
+        id: "usr-admin",
+        email: "mchieu.nguyen@gmail.com",
+        password: "Minhga@678548",
+        name: "Nguyễn Minh Chiêu",
+        role: "admin",
+        department: "Ban Tổ Chức"
+    };
+    const LEGACY_DEMO_EMAILS = ["admin@qrcheckin.com", "manager@qrcheckin.com", "user@qrcheckin.com"];
+    function ensureAdminAccount() {
+        if (!Array.isArray(state.users)) state.users = [];
+        let changed = false;
+        const before = state.users.length;
+        state.users = state.users.filter(u => LEGACY_DEMO_EMAILS.indexOf(String(u.email || "").toLowerCase()) === -1);
+        if (state.users.length !== before) changed = true;
+        const adminEmail = ADMIN_ACCOUNT.email.toLowerCase();
+        const existing = state.users.find(u => String(u.email || "").toLowerCase() === adminEmail);
+        if (existing) {
+            if (existing.password !== ADMIN_ACCOUNT.password || existing.name !== ADMIN_ACCOUNT.name || existing.role !== "admin") {
+                existing.password = ADMIN_ACCOUNT.password;
+                existing.name = ADMIN_ACCOUNT.name;
+                existing.role = "admin";
+                changed = true;
+            }
+        } else {
+            state.users.push(Object.assign({}, ADMIN_ACCOUNT));
+            changed = true;
+        }
+        if (changed) saveState("users");
+        return changed;
+    }
     // How often the app pulls the sheet to reflect changes from other devices.
     // (Check-in pushes are immediate, independent of this interval.)
     const SHEETS_SYNC_INTERVAL_MS = 4000;
@@ -147,6 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
             localStorage.setItem("qr_users", JSON.stringify(INITIAL_USERS));
         }
         state.users = JSON.parse(localStorage.getItem("qr_users"));
+        ensureAdminAccount(); // guarantee the real admin exists; drop legacy demo accounts
 
         // Customers init
         if (!localStorage.getItem("qr_customers")) {
@@ -4349,6 +4384,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (data.users) {
                         state.users = data.users;
                         localStorage.setItem("qr_users", JSON.stringify(data.users));
+                        ensureAdminAccount();
                     }
                     if (data.emails) {
                         state.emails = data.emails;
@@ -4399,6 +4435,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (data.users) {
                     state.users = data.users;
                     localStorage.setItem('qr_users', JSON.stringify(data.users));
+                    ensureAdminAccount();
                 }
                 if (data.customers) {
                     state.customers = data.customers;
