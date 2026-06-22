@@ -14,11 +14,11 @@ window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInter
         (document.body || document.documentElement).appendChild(d);
         render();
     }
-    function render() { var d = document.getElementById("__sync_dbg"); if (d) d.textContent = lines.join("\n"); }
+    function render() { var d = document.getElementById("__sync_dbg"); if (d) { d.textContent = lines.join("\n"); d.scrollTop = d.scrollHeight; } }
     window.__syncDbg = function (msg) {
         try {
             lines.push(new Date().toTimeString().slice(0, 8) + " " + msg);
-            if (lines.length > 12) lines = [lines[0]].concat(lines.slice(-11));
+            if (lines.length > 16) lines = [lines[0]].concat(lines.slice(-15));
             makeBadge(); render();
         } catch (e) {}
     };
