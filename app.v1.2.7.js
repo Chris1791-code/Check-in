@@ -58,11 +58,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Default Google Apps Script Web App endpoint for Sheets sync. The app auto-connects
     // to this if the user hasn't configured their own URL in Settings.
-    const DEFAULT_SHEETS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzu-S1UH6O8JoWtJlKGwQlQR_uIjwW9WuE5mGW8YrYjYxEj40iq0yo8WX5EIYa7qReV4g/exec";
+    const DEFAULT_SHEETS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhZj0LI8iTLD1MwvAIjZiR3GJsPQj7GQbbyDZsnDu11uxwnFdhtpmWA15I6wdF7k7irw/exec";
     // Older builds saved these now-superseded endpoints; migrate them to the current one.
     const DEPRECATED_SHEETS_SCRIPT_URLS = [
         "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec",
-        "https://script.google.com/macros/s/AKfycbxYMY7BJ4Vmps_B3E-zdLjxdR4jgHp4vKBFCMYGKImvU9YOS6IiLafpkPttyBUX42S8jA/exec"
+        "https://script.google.com/macros/s/AKfycbxYMY7BJ4Vmps_B3E-zdLjxdR4jgHp4vKBFCMYGKImvU9YOS6IiLafpkPttyBUX42S8jA/exec",
+        "https://script.google.com/macros/s/AKfycbzu-S1UH6O8JoWtJlKGwQlQR_uIjwW9WuE5mGW8YrYjYxEj40iq0yo8WX5EIYa7qReV4g/exec"
     ];
     // IDs already sent to the sheet this session — prevents duplicate appends when the
     // no-cors POST can't return a rowNum and a pull hasn't reconciled yet.
@@ -4724,22 +4725,11 @@ function doPost(e) {
                         localUpdated = true;
                         showToast("Đồng bộ check-in", `Khách "${localCust.HoVaTen}" được check-in từ thiết bị khác.`, "info");
                     } else if (!isSheetCheckedIn && localCust.status === "Checked In") {
-                        // Sheet says NOT checked in, but local says checked in.
-                        // If the local check-in is recent (<60s) it just hasn't reached the
-                        // sheet yet -> push it. Otherwise the Sheet is authoritative: accept
-                        // the clear (admin removed a wrong check-in on the sheet).
-                        const age = Date.now() - (localCust.localCheckInAt || 0);
-                        if (age < 60000) {
-                            postCheckInToGoogleSheets(localCust);
-                        } else {
-                            localCust.status = "Pending";
-                            localCust.checkInTime = null;
-                            localCust.checkInLocation = null;
-                            localCust.checkedBy = null;
-                            localCust.localCheckInAt = 0;
-                            state.logs = state.logs.filter(l => l.customerId !== localCust.id);
-                            localUpdated = true;
-                        }
+                        // Local has a check-in the sheet doesn't yet -> push it.
+                        // IMPORTANT: never auto-clear/revert a local check-in here. Doing so
+                        // can wipe real check-ins (and their history logs) whenever a push
+                        // lags or fails. Check-ins must never be lost during an event.
+                        postCheckInToGoogleSheets(localCust);
                     }
 
                     if (localCust.HoVaTen !== HoVaTen) { localCust.HoVaTen = HoVaTen; localUpdated = true; }
@@ -4796,11 +4786,28 @@ function doPost(e) {
             // every pull floods the network (hundreds of serialized POSTs) and makes
             // check-in pushes crawl. Bulk upload is done explicitly via the batch button.
 
+            // Recover any missing history logs (e.g. wiped by the old auto-clear bug):
+            // every Checked-In customer must have a matching log row.
+            state.customers.forEach(c => {
+                if (c.status === "Checked In" && c.id && !state.logs.some(l => l.customerId === c.id)) {
+                    state.logs.push({
+                        id: "log-" + Date.now() + Math.random().toString(36).substr(2, 4),
+                        customerId: c.id,
+                        customerName: c.HoVaTen,
+                        checkInTime: c.checkInTime || new Date().toISOString(),
+                        location: c.checkInLocation || "Lối vào",
+                        checkedBy: c.checkedBy || "Nhân viên"
+                    });
+                    localUpdated = true;
+                }
+            });
+
             if (localUpdated) {
                 saveState("customers");
                 saveState("logs");
                 renderCustomersTable();
                 renderDashboard();
+                if (state.currentView === "history") { renderHistoryTable(); }
             }
             updateSheetsSyncIndicator("success");
         } catch (err) {
