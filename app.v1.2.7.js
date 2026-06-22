@@ -2219,10 +2219,23 @@ document.addEventListener("DOMContentLoaded", () => {
             ticketId = ticketId.substring(10);
         }
 
-        const customer = state.customers.find(c =>
-            (c.id && c.id.toLowerCase() === ticketId.toLowerCase()) ||
-            (c.qrCode && c.qrCode.toLowerCase() === cleanQrData.toLowerCase())
-        );
+        // Match the scanned value against id / qrCode first, then flexibly against ANY data
+        // column (so a student-card barcode stored in any column — e.g. "Mã thẻ" — also works).
+        const scannedLower = ticketId.toLowerCase();
+        const cleanLower = cleanQrData.toLowerCase();
+        const SKIP_MATCH_FIELDS = ["qrCode", "_rowNum", "status", "checkInTime", "checkInLocation", "checkedBy", "localCheckInAt", "_updatedThisBatch"];
+        const customer = state.customers.find(c => {
+            if (c.id && c.id.toLowerCase() === scannedLower) return true;
+            if (c.qrCode && c.qrCode.toLowerCase() === cleanLower) return true;
+            if (scannedLower.length >= 4) {
+                for (const k in c) {
+                    if (SKIP_MATCH_FIELDS.indexOf(k) !== -1) continue;
+                    const v = c[k];
+                    if (v != null && String(v).trim().toLowerCase() === scannedLower) return true;
+                }
+            }
+            return false;
+        });
         window.__syncDbg("QUÉT id=" + ticketId + " | tìm thấy=" + (customer ? (customer.id + " status=" + customer.status) : "KHÔNG"));
 
         if (!customer) {
