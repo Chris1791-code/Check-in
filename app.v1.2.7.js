@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN SYNC DEBUG (build 20260619v) — remove once Sheet sync confirmed.
+/* TEMP ON-SCREEN SYNC DEBUG (build 20260619y) — remove once Sheet sync confirmed.
    Always-visible panel: proves the build loaded, logs every check-in/sync step. */
 (function () {
-    var lines = ["SYNC DEBUG • BUILD 20260619v"];
+    var lines = ["SYNC DEBUG • BUILD 20260619y"];
     function makeBadge() {
         if (document.getElementById("__sync_dbg")) return;
         var d = document.createElement("div");
