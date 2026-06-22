@@ -1,9 +1,9 @@
 window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInterval(window.quaggaLiveInterval); window.quaggaLiveInterval = null; } };
 
-/* TEMP ON-SCREEN SYNC DEBUG (build 20260619y) — remove once Sheet sync confirmed.
+/* TEMP ON-SCREEN SYNC DEBUG (build 20260619z) — remove once Sheet sync confirmed.
    Always-visible panel: proves the build loaded, logs every check-in/sync step. */
 (function () {
-    var lines = ["SYNC DEBUG • BUILD 20260619y"];
+    var lines = ["SYNC DEBUG • BUILD 20260619z"];
     function makeBadge() {
         if (document.getElementById("__sync_dbg")) return;
         var d = document.createElement("div");
@@ -22,6 +22,13 @@ window.stopQuaggaLive = function() { if (window.quaggaLiveInterval) { clearInter
             makeBadge(); render();
         } catch (e) {}
     };
+    window.addEventListener("error", function (e) {
+        window.__syncDbg("‼ JS ERROR: " + (e.message || "?") + " @ " + (e.lineno || ""));
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+        var r = e.reason || {};
+        window.__syncDbg("‼ REJECT: " + (r.name || "") + " " + (r.message || r));
+    });
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", makeBadge);
     else makeBadge();
 })();
@@ -2259,8 +2266,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             flashScannerOverlay("error", "Đã check-in", alertText, slotId);
             showToast("Đã check-in trước đó", alertText, "warning");
-            window.__syncDbg("Đã check-in trước đó -> vẫn đẩy lại lên Sheet");
-            postCheckInToGoogleSheets(customer);
+            window.__syncDbg("Đã check-in trước đó -> trước khi gọi đẩy");
+            try { postCheckInToGoogleSheets(customer); } catch (errPush) { window.__syncDbg("‼ Lỗi gọi đẩy: " + (errPush && errPush.message ? errPush.message : errPush)); }
+            window.__syncDbg("-> sau khi gọi đẩy");
 
             renderScannedCard(customer, true);
             return;
