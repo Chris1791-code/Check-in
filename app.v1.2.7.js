@@ -114,6 +114,12 @@ document.addEventListener("DOMContentLoaded", () => {
             state.settings.sheets.scriptUrl = DEFAULT_SHEETS_SCRIPT_URL;
             state.settings.sheets.enabled = true;
         }
+        // This app always relies on Sheets sync — keep it ON whenever a URL is set, even if
+        // a stale Firebase settings record (or an earlier toggle) had enabled=false. Without
+        // this, check-in pushes silently never fire.
+        if (state.settings.sheets && state.settings.sheets.scriptUrl && !state.settings.sheets.enabled) {
+            state.settings.sheets.enabled = true;
+        }
     }
 
     // --- SHARED UTILITIES FOR DE-DUPLICATION ---
@@ -2241,10 +2247,10 @@ document.addEventListener("DOMContentLoaded", () => {
         saveState("customers");
         saveState("logs");
 
-        // Sync with Google Sheets in background if enabled
-        if (state.settings.sheets && state.settings.sheets.enabled && state.settings.sheets.scriptUrl) {
-            postCheckInToGoogleSheets(customer);
-        }
+        // Always push the check-in to Google Sheets (postCheckInToGoogleSheets resolves the
+        // URL itself, falling back to the default). Never gate this on the enabled flag —
+        // a stale enabled=false was silently dropping every check-in push.
+        postCheckInToGoogleSheets(customer);
 
         // UI Feedback
         playNotificationSound("success");
@@ -4856,9 +4862,10 @@ function doPost(e) {
     }
 
     async function postCheckInToGoogleSheets(customer) {
-        if (!state.settings.sheets || !state.settings.sheets.enabled || !state.settings.sheets.scriptUrl) {
-            return;
-        }
+        // Resolve a URL even if settings are missing/disabled — check-ins must always sync.
+        const resolvedUrl = (state.settings && state.settings.sheets && state.settings.sheets.scriptUrl) || DEFAULT_SHEETS_SCRIPT_URL;
+        if (!resolvedUrl) return;
+        if (!state.settings.sheets) state.settings.sheets = { enabled: true, scriptUrl: resolvedUrl };
         try {
             const payload = {
                 action: "checkin",
@@ -4874,7 +4881,7 @@ function doPost(e) {
             // browser, so the write never lands. no-cors gives an opaque (unreadable)
             // response, but doPost still executes and writes the row; the next pull
             // reconciles any returned values.
-            const sheetUrl = state.settings.sheets.scriptUrl;
+            const sheetUrl = resolvedUrl;
             await fetch(sheetUrl, {
                 method: "POST",
                 mode: "no-cors",
