@@ -4874,7 +4874,8 @@ function doPost(e) {
             // browser, so the write never lands. no-cors gives an opaque (unreadable)
             // response, but doPost still executes and writes the row; the next pull
             // reconciles any returned values.
-            await fetch(state.settings.sheets.scriptUrl, {
+            const sheetUrl = state.settings.sheets.scriptUrl;
+            await fetch(sheetUrl, {
                 method: "POST",
                 mode: "no-cors",
                 headers: {
@@ -4883,6 +4884,31 @@ function doPost(e) {
                 body: JSON.stringify(payload)
             });
             console.log(`Đã gửi check-in cho ${customer.HoVaTen} lên Google Sheets.`);
+
+            // VERIFY: read the sheet back and confirm this check-in actually landed.
+            setTimeout(async () => {
+                try {
+                    const resp = await fetch(sheetUrl);
+                    const rows = await resp.json();
+                    const idKeys = idPossibles.map(h => h.toLowerCase());
+                    const myId = String(customer.id).trim();
+                    let row = null;
+                    if (Array.isArray(rows)) {
+                        row = rows.find(r => Object.keys(r).some(k => idKeys.indexOf(k.toLowerCase()) !== -1 && String(r[k]).trim() === myId));
+                    }
+                    if (!row) {
+                        showToast("Sheet: không thấy mã", `Mã "${myId}" (${customer.HoVaTen}) không có dòng nào trên Google Sheet → không ghi được. Hãy bấm "Đẩy toàn bộ" trước.`, "error");
+                        return;
+                    }
+                    const stKey = Object.keys(row).find(k => k.toLowerCase().indexOf("trạng thái") !== -1 || k.toLowerCase().indexOf("status") !== -1);
+                    const st = stKey ? String(row[stKey]).trim().toLowerCase() : "";
+                    if (st === "checked in") {
+                        showToast("Đồng bộ Sheet ✓", `${customer.HoVaTen} đã cập nhật lên Google Sheet.`, "success");
+                    } else {
+                        showToast("Sheet chưa nhận", `${customer.HoVaTen}: trên Sheet vẫn "${stKey ? row[stKey] : '?'}". Kiểm tra URL Apps Script (đang dùng ...${sheetUrl.slice(-12)}).`, "warning");
+                    }
+                } catch (e) { /* ignore verify errors */ }
+            }, 2500);
         } catch (err) {
             console.error("Failed to post check-in to Google Sheets:", err);
         }
