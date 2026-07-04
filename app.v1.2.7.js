@@ -2518,6 +2518,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const filterType = document.getElementById("customer-filter-type");
     const filterStatus = document.getElementById("customer-filter-status");
 
+    // Extra customer columns, matching the import template QR_Checkin_Mau_Import.xlsx
+    // (Donvi / Chucvu / Ghichu). Each maps to a friendly label + the field names it may
+    // be stored under (raw header from import, or a diacritic variant).
+    const CUSTOMER_EXTRA_COLS = [
+        { label: "Đơn vị", keys: ["Donvi", "Đơn vị", "DonVi", "Don vi", "Đơn Vị"] },
+        { label: "Chức vụ", keys: ["Chucvu", "Chức vụ", "ChucVu", "Chuc vu", "Chức Vụ"] },
+        { label: "Ghi chú", keys: ["Ghichu", "Ghi chú", "GhiChu", "Ghi chu", "Ghi Chú"] }
+    ];
+    function getCustField(cust, keys) {
+        for (let i = 0; i < keys.length; i++) {
+            const v = cust[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+        }
+        return "";
+    }
+
     function renderCustomersTable() {
         const query = customerSearch.value.toLowerCase();
         const type = filterType.value;
@@ -2551,27 +2567,16 @@ document.addEventListener("DOMContentLoaded", () => {
         // Set counts
         document.getElementById("customer-list-count").textContent = `${filtered.length} người`;
 
-        // Identify custom columns to render dynamically (max 4 columns)
-        const systemKeys = ["id", "qrCode", "status", "checkInTime", "checkInLocation", "checkedBy", "HoVaTen", "SoDienThoai", "Email"];
-        let customKeys = [];
-        state.customers.forEach(cust => {
-            Object.keys(cust).forEach(key => {
-                if (!systemKeys.includes(key) && !customKeys.includes(key)) {
-                    customKeys.push(key);
-                }
-            });
-        });
-        const maxCustomCols = 4;
-        const colsToShow = customKeys.slice(0, maxCustomCols);
+        // Fixed extra columns matching the import template (Đơn vị / Chức vụ / Ghi chú).
+        const extraCols = CUSTOMER_EXTRA_COLS;
 
-        // Dynamically build headers
         const headerRow = `
             <tr>
-                <th>Mã Vé</th>
+                <th>Mã ID</th>
                 <th>Họ và Tên</th>
                 <th>Số Điện Thoại</th>
                 <th>Email</th>
-                ${colsToShow.map(col => `<th>${col}</th>`).join("")}
+                ${extraCols.map(c => `<th>${c.label}</th>`).join("")}
                 <th>Check-In</th>
                 <th class="text-right">Hành Động</th>
             </tr>
@@ -2581,15 +2586,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (filtered.length === 0) {
             customerTableBody.innerHTML = `
                 <tr>
-                    <td colspan="${6 + colsToShow.length}" class="text-center text-muted">Không tìm thấy học sinh nào khớp với điều kiện lọc.</td>
+                    <td colspan="${6 + extraCols.length}" class="text-center text-muted">Không tìm thấy khách hàng nào khớp với điều kiện lọc.</td>
                 </tr>
             `;
             return;
         }
 
         customerTableBody.innerHTML = filtered.map(cust => {
-            const customCells = colsToShow.map(col => {
-                const val = cust[col] !== undefined && cust[col] !== null ? cust[col] : 'N/A';
+            const customCells = extraCols.map(col => {
+                const val = getCustField(cust, col.keys) || '—';
                 return `<td class="font-12" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${val}">${val}</td>`;
             }).join("");
 
@@ -2695,10 +2700,9 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("c-name").value = cust.HoVaTen;
             document.getElementById("c-phone").value = cust.SoDienThoai;
             document.getElementById("c-email").value = cust.Email;
-            document.getElementById("c-school").value = cust.TruongTHPT || "";
-            document.getElementById("c-english-cert").value = cust.ChungChiTiengAnh || "";
-            document.getElementById("c-admission-cert").value = cust.ChungChiTuyenSinhQuocTe || "";
-            document.getElementById("c-activity-exp").value = cust.TraiNghiemHoatDong || "";
+            document.getElementById("c-school").value = getCustField(cust, CUSTOMER_EXTRA_COLS[0].keys);
+            document.getElementById("c-english-cert").value = getCustField(cust, CUSTOMER_EXTRA_COLS[1].keys);
+            document.getElementById("c-activity-exp").value = getCustField(cust, CUSTOMER_EXTRA_COLS[2].keys);
             document.getElementById("btn-submit-customer-modal").textContent = "Lưu Thay Đổi";
         }
 
@@ -2719,10 +2723,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const HoVaTen = document.getElementById("c-name").value.trim();
         const SoDienThoai = document.getElementById("c-phone").value.trim();
         const Email = document.getElementById("c-email").value.trim();
-        const TruongTHPT = document.getElementById("c-school").value.trim();
-        const ChungChiTiengAnh = document.getElementById("c-english-cert").value.trim() || "Không";
-        const ChungChiTuyenSinhQuocTe = document.getElementById("c-admission-cert").value.trim() || "Không";
-        const TraiNghiemHoatDong = document.getElementById("c-activity-exp").value.trim() || "Chưa có";
+        const Donvi = document.getElementById("c-school").value.trim();
+        const Chucvu = document.getElementById("c-english-cert").value.trim();
+        const Ghichu = document.getElementById("c-activity-exp").value.trim();
 
         if (mode === "add") {
             // Generate ticket ID (deterministic)
@@ -2740,10 +2743,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 HoVaTen,
                 SoDienThoai,
                 Email,
-                TruongTHPT,
-                ChungChiTiengAnh,
-                ChungChiTuyenSinhQuocTe,
-                TraiNghiemHoatDong,
+                Donvi,
+                Chucvu,
+                Ghichu,
                 status: "Pending",
                 qrCode: `QRCHECKIN-${ticketId}`,
                 checkInTime: null,
@@ -2761,8 +2763,8 @@ document.addEventListener("DOMContentLoaded", () => {
             
             // Queue simulated outbox email
             queueSimulatedEmail(newCust);
-            showToast("Đã tạo học sinh", `Đã lưu thành công "${HoVaTen}". Email thẻ QR đang được chuẩn bị.`, "success");
-            logActivity("info", "Tạo học sinh mới", `Nhân viên đã tạo học sinh ${HoVaTen} (${TruongTHPT})`);
+            showToast("Đã tạo khách hàng", `Đã lưu thành công "${HoVaTen}". Email thẻ QR đang được chuẩn bị.`, "success");
+            logActivity("info", "Tạo khách hàng mới", `Nhân viên đã tạo khách hàng ${HoVaTen}${Donvi ? " (" + Donvi + ")" : ""}`);
         } else {
             const id = document.getElementById("customer-form-id").value;
             const cust = state.customers.find(c => c.id === id);
@@ -2770,14 +2772,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 cust.HoVaTen = HoVaTen;
                 cust.SoDienThoai = SoDienThoai;
                 cust.Email = Email;
-                cust.TruongTHPT = TruongTHPT;
-                cust.ChungChiTiengAnh = ChungChiTiengAnh;
-                cust.ChungChiTuyenSinhQuocTe = ChungChiTuyenSinhQuocTe;
-                cust.TraiNghiemHoatDong = TraiNghiemHoatDong;
+                cust.Donvi = Donvi;
+                cust.Chucvu = Chucvu;
+                cust.Ghichu = Ghichu;
 
                 saveState("customers");
-                showToast("Cập nhật thành công", `Đã sửa đổi thông tin cho học sinh "${HoVaTen}".`, "success");
-                logActivity("info", "Cập nhật thông tin", `Sửa đổi thông tin học sinh ${HoVaTen} (${id})`);
+                showToast("Cập nhật thành công", `Đã sửa đổi thông tin cho khách hàng "${HoVaTen}".`, "success");
+                logActivity("info", "Cập nhật thông tin", `Sửa đổi thông tin khách hàng ${HoVaTen} (${id})`);
             }
         }
 
@@ -2911,7 +2912,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const namePossibles = ["HoVaTen", "Họ tên", "Họ và tên", "Họ và Tên", "Name", "Full Name", "Khách hàng", "Tên khách hàng", "Học sinh", "Tên học sinh"];
     const phonePossibles = ["SoDienThoai", "Số điện thoại", "SĐT", "Phone", "SDT", "Số ĐT", "Điện thoại", "Telephone"];
     const emailPossibles = ["Email", "Mail", "Địa chỉ email", "Gmail"];
-    const idPossibles = ["Mã số sinh viên", "Mã số cán bộ", "MSSV", "MSCB", "Mã số", "Mã Vé / ID", "Mã Vé", "ID", "Id", "id", "Mã Số Vé", "Mã Số Vé / ID", "Mã vé / ID", "Ticket ID", "TicketID", "Mã số", "Mã"];
+    const idPossibles = ["Mã ID", "Mã số sinh viên", "Mã số cán bộ", "MSSV", "MSCB", "Mã số", "Mã Vé / ID", "Mã Vé", "ID", "Id", "id", "Mã Số Vé", "Mã Số Vé / ID", "Mã vé / ID", "Ticket ID", "TicketID", "Mã số", "Mã"];
 
     const findBestMatch = (headers, possibles) => {
         // Exact match first
@@ -3260,12 +3261,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-download-template").addEventListener("click", () => {
         try {
             const templateData = [
-                { "HoVaTen": "Trương Minh Nhật", "SoDienThoai": "0911223344", "Email": "nhat.truong@example.com", "TruongTHPT": "THPT Chuyên Lê Hồng Phong", "ChungChiTiengAnh": "IELTS 7.5", "ChungChiTuyenSinhQuocTe": "SAT 1450", "TraiNghiemHoatDong": "Chủ nhiệm CLB Robot, Đạt giải Nhất khoa học kỹ thuật cấp Tỉnh" },
-                { "HoVaTen": "Nguyễn Hoàng Mỹ", "SoDienThoai": "0988776655", "Email": "my.nguyen@example.com", "TruongTHPT": "THPT Chuyên Trần Đại Nghĩa", "ChungChiTiengAnh": "IELTS 8.0", "ChungChiTuyenSinhQuocTe": "ACT 34", "TraiNghiemHoatDong": "Thành viên Đội tuyển HSG Tiếng Anh, Tình nguyện viên Mùa hè xanh" },
-                { "HoVaTen": "Trần Thanh Hằng", "SoDienThoai": "0909090909", "Email": "hang.tran@example.com", "TruongTHPT": "THPT Nguyễn Thượng Hiền", "ChungChiTiengAnh": "Không", "ChungChiTuyenSinhQuocTe": "Không", "TraiNghiemHoatDong": "Lớp trưởng 12A1, Huy chương Đồng điền kinh" }
+                { "Mã ID": "KH001", "HoVaTen": "Nguyễn Văn A", "SoDienThoai": "0911223344", "Email": "a.nguyen@example.com", "Donvi": "Khoa CNTT", "Chucvu": "Sinh viên", "Ghichu": "Khách mời" },
+                { "Mã ID": "KH002", "HoVaTen": "Trần Thị B", "SoDienThoai": "0988776655", "Email": "b.tran@example.com", "Donvi": "Phòng Đào tạo", "Chucvu": "Chuyên viên", "Ghichu": "" },
+                { "Mã ID": "KH003", "HoVaTen": "Lê Hoàng C", "SoDienThoai": "0909090909", "Email": "c.le@example.com", "Donvi": "Khoa Điện - Điện tử", "Chucvu": "Giảng viên", "Ghichu": "Đại biểu" }
             ];
 
-            const ws = XLSX.utils.json_to_sheet(templateData);
+            // Force the exact column order to match the template header.
+            const ws = XLSX.utils.json_to_sheet(templateData, { header: ["Mã ID", "HoVaTen", "SoDienThoai", "Email", "Donvi", "Chucvu", "Ghichu"] });
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "DanhSachHocSinh");
             

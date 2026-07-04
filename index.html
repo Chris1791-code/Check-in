@@ -751,14 +751,13 @@
                                     <table class="data-table">
                                         <thead id="customer-table-header">
                                             <tr>
-                                                <th>Mã Vé</th>
+                                                <th>Mã ID</th>
                                                 <th>Họ và Tên</th>
                                                 <th>Số Điện Thoại</th>
                                                 <th>Email</th>
-                                                <th>Trường THPT</th>
-                                                <th>CC Tiếng Anh</th>
-                                                <th>CC Tuyển Sinh QT</th>
-                                                <th>Trải Nghiệm Hoạt Động</th>
+                                                <th>Đơn vị</th>
+                                                <th>Chức vụ</th>
+                                                <th>Ghi chú</th>
                                                 <th>Check-In</th>
                                                 <th class="text-right">Hành Động</th>
                                             </tr>
@@ -1166,20 +1165,16 @@
                     <input type="email" id="c-email" required placeholder="hocsinh@example.com">
                 </div>
                 <div class="form-group">
-                    <label for="c-school">Trường THPT</label>
-                    <input type="text" id="c-school" required placeholder="Ví dụ: THPT Chuyên Lê Hồng Phong">
+                    <label for="c-school">Đơn vị</label>
+                    <input type="text" id="c-school" placeholder="Ví dụ: Khoa CNTT / Phòng Đào tạo">
                 </div>
                 <div class="form-group">
-                    <label for="c-english-cert">Chứng Chỉ Tiếng Anh</label>
-                    <input type="text" id="c-english-cert" placeholder="Ví dụ: IELTS 7.5 (hoặc Không)">
+                    <label for="c-english-cert">Chức vụ</label>
+                    <input type="text" id="c-english-cert" placeholder="Ví dụ: Sinh viên / Giảng viên / Đại biểu">
                 </div>
                 <div class="form-group">
-                    <label for="c-admission-cert">Chứng Chỉ Tuyển Sinh Quốc Tế</label>
-                    <input type="text" id="c-admission-cert" placeholder="Ví dụ: SAT 1450 (hoặc Không)">
-                </div>
-                <div class="form-group">
-                    <label for="c-activity-exp">Trải Nghiệm Hoạt Động</label>
-                    <textarea id="c-activity-exp" placeholder="Ví dụ: Lớp trưởng, Chủ nhiệm CLB bóng rổ, Huy chương vàng..." rows="3" style="width:100%; padding:10px; border-radius:6px; background:var(--bg-glass-input); border:1px solid var(--border-glass); color:var(--text-primary); font-family:inherit; resize:vertical;"></textarea>
+                    <label for="c-activity-exp">Ghi chú</label>
+                    <textarea id="c-activity-exp" placeholder="Ghi chú thêm (tùy chọn)" rows="3" style="width:100%; padding:10px; border-radius:6px; background:var(--bg-glass-input); border:1px solid var(--border-glass); color:var(--text-primary); font-family:inherit; resize:vertical;"></textarea>
                 </div>
 
                 <div class="modal-footer justify-end mt-20 gap-10">
@@ -1515,6 +1510,6 @@
     <script src="mock-data.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <script src="app.v1.2.7.js?v=20260620b"></script>
+    <script src="app.v1.2.7.js?v=20260620c"></script>
 </body>
 </html>
