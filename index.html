@@ -1086,6 +1086,43 @@
                                     </div>
                                 </div>
 
+                                <!-- Event Information (shown on the ticket) -->
+                                <div class="glass-panel w-full">
+                                    <div class="panel-header">
+                                        <h3><i class="ri-calendar-event-line text-indigo"></i> Thông Tin Sự Kiện</h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <p class="panel-desc mb-15">Thông tin này hiển thị trên vé QR của khách. Sửa ở đây là vé tự cập nhật, không cần sửa mã nguồn.</p>
+
+                                        <form id="settings-event-form" class="standard-form">
+                                            <div class="form-group">
+                                                <label for="ev-name">Tên sự kiện</label>
+                                                <input type="text" id="ev-name" placeholder="Ví dụ: Chào Mừng Tân Sinh Viên 2026">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ev-date">Ngày diễn ra</label>
+                                                <input type="text" id="ev-date" placeholder="Ví dụ: 22/09/2026">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ev-time">Khung giờ</label>
+                                                <input type="text" id="ev-time" placeholder="Ví dụ: 08:00 - 17:00">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ev-location">Địa điểm</label>
+                                                <input type="text" id="ev-location" placeholder="Ví dụ: Hội trường A5, ĐHBK CS2">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="ev-attendee-label">Cách gọi người tham dự</label>
+                                                <input type="text" id="ev-attendee-label" placeholder="Ví dụ: Sinh viên">
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary btn-sm" style="width:100%; justify-content:center; height:36px;">
+                                                <i class="ri-save-3-line"></i> Lưu Thông Tin Sự Kiện
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
                                 <!-- Google Sheets Sync Configuration -->
                                 <div class="glass-panel w-full">
                                     <div class="panel-header">
@@ -1199,7 +1236,7 @@
                 <h2 id="ticket-cust-name" class="ticket-name">Nguyễn Văn A</h2>
                 <p id="ticket-cust-company" class="ticket-company">Trường: THPT Chuyên Lê Hồng Phong</p>
                 
-                <div class="ticket-type-tag" id="ticket-cust-type">HỌC SINH</div>
+                <div class="ticket-type-tag" id="ticket-cust-type">SINH VIÊN</div>
                 
                 <!-- QR Code Target Holder -->
                 <div class="ticket-qr-container">
@@ -1223,8 +1260,8 @@
                 </div>
 
                 <div class="ticket-footer-desc">
-                    <p><i class="ri-calendar-event-line"></i> Ngày: 22/05/2026 | Giờ: 08:00 - 17:00</p>
-                    <p><i class="ri-map-pin-user-line"></i> Địa điểm: Trung Tâm Hội Nghị Quốc Gia</p>
+                    <p><i class="ri-calendar-event-line"></i> <span id="ticket-event-when">Ngày: — | Giờ: —</span></p>
+                    <p><i class="ri-map-pin-user-line"></i> <span id="ticket-event-where">Địa điểm: —</span></p>
                 </div>
             </div>
             
@@ -1510,6 +1547,6 @@
     <script src="mock-data.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <script src="app.v1.2.7.js?v=20260620f"></script>
+    <script src="app.v1.2.7.js?v=20260620g"></script>
 </body>
 </html>

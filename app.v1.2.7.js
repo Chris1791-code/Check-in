@@ -108,8 +108,30 @@ document.addEventListener("DOMContentLoaded", () => {
     // How often the app pulls the sheet to reflect changes from other devices.
     // (Check-in pushes are immediate, independent of this interval.)
     const SHEETS_SYNC_INTERVAL_MS = 4000;
+    // Event details printed on the QR ticket. Editable in Settings -> Thông Tin Sự Kiện,
+    // so changing the event never requires a code edit.
+    const DEFAULT_EVENT_INFO = {
+        name: "Chào Mừng Tân Sinh Viên 2026",
+        date: "",
+        time: "",
+        location: "",
+        attendeeLabel: "Sinh viên"
+    };
+    function applyDefaultEventInfo() {
+        if (!state.settings) return;
+        const ev = state.settings.event || {};
+        state.settings.event = {
+            name: ev.name !== undefined ? ev.name : DEFAULT_EVENT_INFO.name,
+            date: ev.date !== undefined ? ev.date : DEFAULT_EVENT_INFO.date,
+            time: ev.time !== undefined ? ev.time : DEFAULT_EVENT_INFO.time,
+            location: ev.location !== undefined ? ev.location : DEFAULT_EVENT_INFO.location,
+            attendeeLabel: ev.attendeeLabel || DEFAULT_EVENT_INFO.attendeeLabel
+        };
+    }
+
     function applyDefaultSheetsConfig() {
         if (!state.settings) return;
+        applyDefaultEventInfo();
         // Backfill when no URL configured yet, or migrate a known-dead default URL.
         if (!state.settings.sheets || !state.settings.sheets.scriptUrl) {
             state.settings.sheets = { enabled: true, scriptUrl: DEFAULT_SHEETS_SCRIPT_URL };
@@ -2361,16 +2383,29 @@ document.addEventListener("DOMContentLoaded", () => {
         const timeString = cust.checkInTime ? new Date(cust.checkInTime).toLocaleTimeString('vi-VN') : 'N/A';
         const dateString = cust.checkInTime ? new Date(cust.checkInTime).toLocaleDateString('vi-VN') : '';
 
-        // Collect custom fields
-        const systemKeys = ["id", "qrCode", "status", "checkInTime", "checkInLocation", "checkedBy", "HoVaTen", "SoDienThoai", "Email"];
-        const customKeys = Object.keys(cust).filter(k => !systemKeys.includes(k));
+        // Show the template fields first with friendly labels, then any other real data
+        // column. Internal bookkeeping keys must never be shown to the person scanning.
+        const systemKeys = ["id", "qrCode", "status", "checkInTime", "checkInLocation", "checkedBy",
+                            "HoVaTen", "SoDienThoai", "Email", "_rowNum", "localCheckInAt", "_updatedThisBatch"];
+        const shown = new Set(systemKeys);
+        const pairs = [];
+        CUSTOMER_EXTRA_COLS.forEach(col => {
+            col.keys.forEach(k => shown.add(k));
+            const v = getCustField(cust, col.keys);
+            if (v) pairs.push([col.label, v]);
+        });
+        Object.keys(cust).forEach(k => {
+            if (shown.has(k)) return;
+            const v = cust[k];
+            if (v === undefined || v === null || String(v).trim() === "") return;
+            pairs.push([k, String(v).trim()]);
+        });
 
         let customFieldsHtml = "";
-        customKeys.forEach(key => {
-            const val = cust[key] !== undefined && cust[key] !== null ? cust[key] : 'N/A';
+        pairs.forEach(([label, val]) => {
             customFieldsHtml += `
                 <div class="scan-grid-item">
-                    <span>${key}</span>
+                    <span>${label}</span>
                     <strong style="font-weight: 500; font-size: 13px; line-height: 1.4;">${val}</strong>
                 </div>
             `;
@@ -2381,7 +2416,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="scan-card-header">
                     <div>
                         <h4 class="scan-card-title">${cust.HoVaTen || 'N/A'}</h4>
-                        <span class="scan-card-subtitle">Mã Vé: ${cust.id}</span>
+                        <span class="scan-card-subtitle">Mã ID: ${cust.id}</span>
                     </div>
                     <span class="badge-type standard" style="background: ${alreadyCheckedIn ? 'var(--color-warning-alpha)' : 'var(--color-success-alpha)'}; color: ${alreadyCheckedIn ? 'var(--color-warning)' : 'var(--color-success)'};">
                         ${cust.status === 'Checked In' ? 'Đã Quét' : 'Chờ Quét'}
@@ -2841,14 +2876,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function openTicketPreviewModal(cust) {
         currentPreviewCustomer = cust;
+        applyDefaultEventInfo();
+        const ev = state.settings.event;
+
         document.getElementById("ticket-cust-name").textContent = cust.HoVaTen;
-        document.getElementById("ticket-cust-company").textContent = cust.TruongTHPT ? `Trường: ${cust.TruongTHPT}` : "N/A";
+        // Show the attendee's unit (Đơn vị) — falls back to the legacy school field.
+        const unit = getCustField(cust, CUSTOMER_EXTRA_COLS[0].keys) || cust.TruongTHPT || "";
+        document.getElementById("ticket-cust-company").textContent = unit ? `Đơn vị: ${unit}` : (ev.name || "");
         document.getElementById("ticket-cust-id").textContent = cust.id;
-        
+
+        // Badge = the person's Chức vụ, else the configured attendee label ("Sinh viên").
         const typeEl = document.getElementById("ticket-cust-type");
-        const certBadge = cust.ChungChiTiengAnh && cust.ChungChiTiengAnh.toLowerCase() !== 'không' ? cust.ChungChiTiengAnh : (cust.ChungChiTuyenSinhQuocTe && cust.ChungChiTuyenSinhQuocTe.toLowerCase() !== 'không' ? cust.ChungChiTuyenSinhQuocTe : 'Học sinh');
-        typeEl.textContent = certBadge;
+        const role = getCustField(cust, CUSTOMER_EXTRA_COLS[1].keys);
+        typeEl.textContent = role || ev.attendeeLabel || "Sinh viên";
         typeEl.className = `ticket-type-tag standard`;
+
+        // Event date / time / location come from Settings, not hardcoded markup.
+        const whenEl = document.getElementById("ticket-event-when");
+        const whereEl = document.getElementById("ticket-event-where");
+        if (whenEl) {
+            const parts = [];
+            if (ev.date) parts.push(`Ngày: ${ev.date}`);
+            if (ev.time) parts.push(`Giờ: ${ev.time}`);
+            whenEl.textContent = parts.join(" | ");
+            whenEl.parentElement.style.display = parts.length ? "" : "none";
+        }
+        if (whereEl) {
+            whereEl.textContent = ev.location ? `Địa điểm: ${ev.location}` : "";
+            whereEl.parentElement.style.display = ev.location ? "" : "none";
+        }
 
         const statusEl = document.getElementById("ticket-cust-status");
         if (cust.status === "Checked In") {
@@ -3764,6 +3820,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const passBadgeClass = "background:#6366f1; color:white;";
 
+        // Event details + attendee fields used across the email body (from Settings).
+        applyDefaultEventInfo();
+        const emailEvent = state.settings.event;
+        const emailUnit = getCustField(cust, CUSTOMER_EXTRA_COLS[0].keys) || cust.TruongTHPT || "";
+        const emailRole = getCustField(cust, CUSTOMER_EXTRA_COLS[1].keys);
+        const emailNote = getCustField(cust, CUSTOMER_EXTRA_COLS[2].keys);
+
         // We render a beautiful inline HTML newsletter ticket representation in the device preview
         const container = document.getElementById("email-content-rendered-inside");
         
@@ -3777,24 +3840,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 <!-- Body Content -->
                 <div style="padding: 30px 25px;">
-                    <p style="margin-top: 0; font-size: 15px;">Kính gửi em <strong>${cust.HoVaTen || 'Quý học sinh'}</strong>,</p>
-                    <p style="font-size: 14px; color: #555555;">Ban tuyển sinh xin chân thành cảm ơn em đã hoàn tất đăng ký thông tin xét tuyển. Dưới đây là thẻ điện tử xác nhận chính thức của em. Vui lòng **lưu lại mã QR này** và xuất trình tại cổng đón tiếp vào ngày làm việc để làm thủ tục check-in nhanh chóng.</p>
-                    
-                    <!-- Student Academic Profile Box -->
+                    <p style="margin-top: 0; font-size: 15px;">Kính gửi bạn <strong>${cust.HoVaTen || 'Quý sinh viên'}</strong>,</p>
+                    <p style="font-size: 14px; color: #555555;">Ban tổ chức xin chân thành cảm ơn bạn đã đăng ký tham dự${emailEvent.name ? ` <strong>${emailEvent.name}</strong>` : ""}. Dưới đây là thẻ điện tử xác nhận chính thức. Vui lòng <strong>lưu lại mã QR này</strong> và xuất trình tại cổng đón tiếp để làm thủ tục check-in nhanh chóng.</p>
+
+                    <!-- Attendee Profile Box -->
                     <div style="text-align: left; font-size: 13px; color: #4b5563; margin: 20px 0; padding: 15px; background: #f3f4f6; border-radius: 8px; border: 1px solid #e5e7eb;">
-                        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">THÔNG TIN HỒ SƠ CỦA HỌC SINH:</h4>
-                        <p style="margin: 3px 0;">🏫 <strong>Trường THPT:</strong> ${cust.TruongTHPT || 'N/A'}</p>
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #1f2937;">THÔNG TIN NGƯỜI THAM DỰ:</h4>
+                        <p style="margin: 3px 0;">🏫 <strong>Đơn vị:</strong> ${emailUnit || 'N/A'}</p>
+                        <p style="margin: 3px 0;">🎓 <strong>Chức vụ:</strong> ${emailRole || emailEvent.attendeeLabel || 'Sinh viên'}</p>
                         <p style="margin: 3px 0;">📞 <strong>Số Điện Thoại:</strong> ${cust.SoDienThoai || 'N/A'}</p>
-                        <p style="margin: 3px 0;">🇬🇧 <strong>Chứng chỉ Tiếng Anh:</strong> ${cust.ChungChiTiengAnh || 'Không'}</p>
-                        <p style="margin: 3px 0;">🌎 <strong>Chứng chỉ Tuyển sinh QT:</strong> ${cust.ChungChiTuyenSinhQuocTe || 'Không'}</p>
-                        <p style="margin: 3px 0;">🏆 <strong>Trải nghiệm Hoạt động:</strong> ${cust.TraiNghiemHoatDong || 'N/A'}</p>
+                        <p style="margin: 3px 0;">✉️ <strong>Email:</strong> ${cust.Email || 'N/A'}</p>
+                        ${emailNote ? `<p style="margin: 3px 0;">📝 <strong>Ghi chú:</strong> ${emailNote}</p>` : ""}
                     </div>
 
                     <!-- Ticket Layout Box -->
                     <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 25px; margin: 25px 0; text-align: center;">
-                        <h3 style="margin-top: 0; font-size: 18px; color: #111827;">MÃ QR CHECK-IN NHẬP HỌC</h3>
+                        <h3 style="margin-top: 0; font-size: 18px; color: #111827;">MÃ QR CHECK-IN</h3>
                         <span style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; ${passBadgeClass} text-transform: uppercase;">
-                            ${cust.TruongTHPT || 'Học sinh'}
+                            ${emailRole || emailEvent.attendeeLabel || 'Sinh viên'}
                         </span>
                         
                         <!-- QR Image rendered inside Email Mockup -->
@@ -3819,18 +3882,19 @@ document.addEventListener("DOMContentLoaded", () => {
                         </div>
                     </div>
 
-                    <!-- Event Details -->
+                    <!-- Event Details (from Settings -> Thông Tin Sự Kiện) -->
+                    ${(emailEvent.date || emailEvent.time || emailEvent.location) ? `
                     <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 15px; font-size: 13px; color: #166534;">
-                        <p style="margin: 0 0 5px 0;">📅 <strong>Thời gian phỏng vấn:</strong> Thứ Hai | Ngày 22/06/2026 | 08:00 - 17:00</p>
-                        <p style="margin: 0;">📍 <strong>Địa điểm đón tiếp:</strong> Văn Phòng Tuyển Sinh - Đại Học Quốc Gia (Hà Nội)</p>
-                    </div>
+                        ${(emailEvent.date || emailEvent.time) ? `<p style="margin: 0 0 5px 0;">📅 <strong>Thời gian:</strong> ${[emailEvent.date, emailEvent.time].filter(Boolean).join(" | ")}</p>` : ""}
+                        ${emailEvent.location ? `<p style="margin: 0;">📍 <strong>Địa điểm:</strong> ${emailEvent.location}</p>` : ""}
+                    </div>` : ""}
 
-                    <p style="font-size: 13px; color: #6b7280; margin-top: 25px; text-align: center;">Đây là email tự động từ hệ thống Quản lý Tuyển sinh, vui lòng không phản hồi thư này.</p>
+                    <p style="font-size: 13px; color: #6b7280; margin-top: 25px; text-align: center;">Đây là email tự động từ hệ thống check-in, vui lòng không phản hồi thư này.</p>
                 </div>
 
                 <!-- Footer -->
                 <div style="background: #f3f4f6; padding: 20px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                    <p style="margin: 0;">© 2026 Ban Tuyển Sinh Đại Học Quốc Gia. Mọi quyền được bảo lưu.</p>
+                    <p style="margin: 0;">© 2026 ${emailEvent.name || "Ban Tổ Chức"}. Mọi quyền được bảo lưu.</p>
                 </div>
             </div>
         `;
@@ -4266,7 +4330,42 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("sheets-script-url").value = (state.settings.sheets && state.settings.sheets.scriptUrl) ? state.settings.sheets.scriptUrl : "";
         }
 
+        // Event info input mappings
+        applyDefaultEventInfo();
+        const evCfg = state.settings.event;
+        const evFields = {
+            "ev-name": evCfg.name,
+            "ev-date": evCfg.date,
+            "ev-time": evCfg.time,
+            "ev-location": evCfg.location,
+            "ev-attendee-label": evCfg.attendeeLabel
+        };
+        Object.keys(evFields).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = evFields[id] || "";
+        });
+
         renderSettingsLocationsList();
+    }
+
+    const eventForm = document.getElementById("settings-event-form");
+    if (eventForm) {
+        eventForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const val = id => {
+                const el = document.getElementById(id);
+                return el ? el.value.trim() : "";
+            };
+            state.settings.event = {
+                name: val("ev-name"),
+                date: val("ev-date"),
+                time: val("ev-time"),
+                location: val("ev-location"),
+                attendeeLabel: val("ev-attendee-label") || "Sinh viên"
+            };
+            saveState("settings");
+            showToast("Đã lưu", "Thông tin sự kiện đã cập nhật. Vé QR sẽ hiển thị theo thông tin mới.", "success");
+        });
     }
 
     function renderSettingsLocationsList() {
