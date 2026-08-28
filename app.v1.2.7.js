@@ -138,6 +138,30 @@ document.addEventListener("DOMContentLoaded", () => {
         return cleaned;
     };
 
+    // IMPORTANT (mass-import safety): only treat a phone/email as an IDENTITY signal when it
+    // structurally looks real. Filler values ("0", "-", ".", a shared office line, a shared
+    // contact mailbox) used to pass the loose isValidMatchValue check and collapsed hundreds
+    // of distinct people into a single record during de-duplication.
+    const isMatchablePhone = (phone) => {
+        const digits = normalizePhone(phone);
+        if (!isValidMatchValue(digits)) return false;
+        if (digits.length < 8 || digits.length > 15) return false; // real VN numbers are 9-11 digits
+        if (/^(\d)\1*$/.test(digits)) return false;                // 000000000, 111111111...
+        return true;
+    };
+    const isMatchableEmail = (email) => {
+        const clean = String(email || "").trim().toLowerCase();
+        if (!isValidMatchValue(clean)) return false;
+        return /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(clean);
+    };
+    // Two records carrying DIFFERENT explicit IDs are different people — "Mã ID" is the source
+    // of truth, so never merge across it no matter what phone/email they share.
+    const hasConflictingIds = (a, b) => {
+        const ia = a && a.id ? String(a.id).trim() : "";
+        const ib = b && b.id ? String(b.id).trim() : "";
+        return ia !== "" && ib !== "" && ia !== ib;
+    };
+
     const isPlaceholder = (val) => {
         if (!val) return true;
         const clean = String(val).trim().toLowerCase();
@@ -263,10 +287,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const normPhone = normalizePhone(cust.SoDienThoai);
 
             const duplicate = keepers.find(k => {
+                // Same explicit Mã ID -> definitely the same person.
+                if (k.id && cust.id && String(k.id).trim() === String(cust.id).trim()) return true;
+                // Different explicit IDs -> definitely different people, never merge.
+                if (hasConflictingIds(cust, k)) return false;
                 const kEmail = k.Email ? k.Email.trim().toLowerCase() : "";
                 const kPhone = normalizePhone(k.SoDienThoai);
-                return (isValidMatchValue(normEmail) && isValidMatchValue(kEmail) && normEmail === kEmail) ||
-                       (isValidMatchValue(normPhone) && isValidMatchValue(kPhone) && normPhone === kPhone);
+                return (isMatchableEmail(normEmail) && isMatchableEmail(kEmail) && normEmail === kEmail) ||
+                       (isMatchablePhone(normPhone) && isMatchablePhone(kPhone) && normPhone === kPhone);
             });
 
             if (duplicate) {
@@ -386,7 +414,19 @@ document.addEventListener("DOMContentLoaded", () => {
         if (key === "settings") { storageKey = "qr_settings"; val = state.settings; }
 
         if (storageKey) {
-            localStorage.setItem(storageKey, JSON.stringify(val));
+            // Guard the browser storage quota: at a few thousand records setItem can throw
+            // (QuotaExceededError). Unhandled, it aborted saveState and silently skipped the
+            // Firebase write too — data appeared to vanish. Warn instead, and still sync.
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(val));
+            } catch (errQuota) {
+                console.error("localStorage write failed for " + storageKey, errQuota);
+                if (typeof showToast === "function") {
+                    showToast("Bộ nhớ trình duyệt đầy",
+                        `Không lưu được "${key}" vào máy (dữ liệu quá lớn). Dữ liệu vẫn được đồng bộ lên máy chủ, nhưng hãy xóa bớt dữ liệu cũ.`,
+                        "error");
+                }
+            }
             if (db) {
                 db.ref('event_data/' + key).set(val).catch(e => console.error("Firebase sync error", e));
             }
@@ -2999,20 +3039,23 @@ document.addEventListener("DOMContentLoaded", () => {
             totalRowsProcessed++;
 
             // 1. Check if we already have it in our tempImported list for this batch
-            let existing = tempImported.find(c =>
-                (ImportedId !== "" && c.id === ImportedId) ||
-                (isValidMatchValue(Email) && isValidMatchValue(c.Email) && Email.toLowerCase() === c.Email.toLowerCase()) ||
-                (isValidMatchValue(SoDienThoai) && isValidMatchValue(c.SoDienThoai) && normalizePhone(SoDienThoai) === normalizePhone(c.SoDienThoai))
-            );
+            let existing = tempImported.find(c => {
+                if (ImportedId !== "" && String(c.id).trim() === ImportedId) return true;
+                // A row carrying its own Mã ID must never merge into a record with another ID.
+                if (hasConflictingIds({ id: ImportedId }, c)) return false;
+                return (isMatchableEmail(Email) && isMatchableEmail(c.Email) && Email.toLowerCase() === c.Email.toLowerCase()) ||
+                       (isMatchablePhone(SoDienThoai) && isMatchablePhone(c.SoDienThoai) && normalizePhone(SoDienThoai) === normalizePhone(c.SoDienThoai));
+            });
 
             // 2. If not, check if they exist in the global database
             let isFromGlobal = false;
             if (!existing) {
-                existing = state.customers.find(c =>
-                    (ImportedId !== "" && c.id === ImportedId) ||
-                    (isValidMatchValue(Email) && isValidMatchValue(c.Email) && Email.toLowerCase() === c.Email.toLowerCase()) ||
-                    (isValidMatchValue(SoDienThoai) && isValidMatchValue(c.SoDienThoai) && normalizePhone(SoDienThoai) === normalizePhone(c.SoDienThoai))
-                );
+                existing = state.customers.find(c => {
+                    if (ImportedId !== "" && String(c.id).trim() === ImportedId) return true;
+                    if (hasConflictingIds({ id: ImportedId }, c)) return false;
+                    return (isMatchableEmail(Email) && isMatchableEmail(c.Email) && Email.toLowerCase() === c.Email.toLowerCase()) ||
+                           (isMatchablePhone(SoDienThoai) && isMatchablePhone(c.SoDienThoai) && normalizePhone(SoDienThoai) === normalizePhone(c.SoDienThoai));
+                });
                 if (existing) {
                     isFromGlobal = true;
                     tempImported.push(existing);
@@ -3152,7 +3195,7 @@ document.addEventListener("DOMContentLoaded", () => {
             saveState("logs");
             saveState("emails");
 
-            showToast("Nhập dữ liệu thành công", `Nhập mới ${newCount}, gộp ${updateCount} khách hàng.`, "success");
+            showToast("Nhập dữ liệu thành công", `Đọc ${totalRowsProcessed} dòng → thêm mới ${newCount}, gộp vào người có sẵn ${updateCount}. Tổng danh sách: ${state.customers.length} người.`, "success");
             playNotificationSound("success");
             logActivity("info", "Import dữ liệu Excel", `Admin đã nhập dữ liệu từ Excel (Thêm mới: ${newCount}, Gộp thông tin: ${updateCount}).`);
             
