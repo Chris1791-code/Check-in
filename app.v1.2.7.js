@@ -4504,15 +4504,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     ensureAdminAccount();
                 }
                 if (data.customers) {
+                    // FIX: these guards used to name functions that do not exist
+                    // (renderCustomerTable / renderDashboardStats / renderLogs), so incoming
+                    // Firebase data silently never refreshed the screen.
                     state.customers = data.customers;
                     localStorage.setItem('qr_customers', JSON.stringify(data.customers));
-                    if (typeof renderCustomerTable === 'function') renderCustomerTable();
-                    if (typeof renderDashboardStats === 'function') renderDashboardStats();
+                    if (typeof renderCustomersTable === 'function') renderCustomersTable();
+                    if (typeof renderDashboard === 'function') renderDashboard();
                 }
                 if (data.logs) {
                     state.logs = data.logs;
                     localStorage.setItem('qr_checkin_logs', JSON.stringify(data.logs));
-                    if (typeof renderLogs === 'function') renderLogs();
+                    if (typeof renderHistoryTable === 'function') renderHistoryTable();
                 }
                 if (data.emails) {
                     state.emails = data.emails;
