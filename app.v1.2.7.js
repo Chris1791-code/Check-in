@@ -63,7 +63,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const DEPRECATED_SHEETS_SCRIPT_URLS = [
         "https://script.google.com/macros/s/AKfycbzF10Wx9n19CJTGGfJLIsm8gya6Fo96tUiNJDwxhlXOqN1-HubqsNIHOTPyWgNwMJSC-A/exec",
         "https://script.google.com/macros/s/AKfycbxYMY7BJ4Vmps_B3E-zdLjxdR4jgHp4vKBFCMYGKImvU9YOS6IiLafpkPttyBUX42S8jA/exec",
-        "https://script.google.com/macros/s/AKfycbzu-S1UH6O8JoWtJlKGwQlQR_uIjwW9WuE5mGW8YrYjYxEj40iq0yo8WX5EIYa7qReV4g/exec"
+        "https://script.google.com/macros/s/AKfycbzu-S1UH6O8JoWtJlKGwQlQR_uIjwW9WuE5mGW8YrYjYxEj40iq0yo8WX5EIYa7qReV4g/exec",
+        // Deployed by mistake as an Apps Script *Library* instead of a Web app — that URL
+        // form can never serve doGet/doPost, so migrate any device still holding it.
+        "https://script.google.com/macros/library/d/1lrATm2S_I9wUjHQJPq1jReYYbubL6JdwYxf6T07BfyE4a7j-hKACE2TO/1"
     ];
     // IDs already sent to the sheet this session — prevents duplicate appends when the
     // no-cors POST can't return a rowNum and a pull hasn't reconciled yet.
@@ -110,7 +113,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // Backfill when no URL configured yet, or migrate a known-dead default URL.
         if (!state.settings.sheets || !state.settings.sheets.scriptUrl) {
             state.settings.sheets = { enabled: true, scriptUrl: DEFAULT_SHEETS_SCRIPT_URL };
-        } else if (DEPRECATED_SHEETS_SCRIPT_URLS.indexOf(state.settings.sheets.scriptUrl) !== -1) {
+        } else if (DEPRECATED_SHEETS_SCRIPT_URLS.indexOf(state.settings.sheets.scriptUrl) !== -1 ||
+                   state.settings.sheets.scriptUrl.indexOf("/macros/library/") !== -1) {
+            // A "/macros/library/" URL is an Apps Script Library deployment: it can never
+            // answer doGet/doPost. Fall back to the known-good Web app endpoint.
             state.settings.sheets.scriptUrl = DEFAULT_SHEETS_SCRIPT_URL;
             state.settings.sheets.enabled = true;
         }
