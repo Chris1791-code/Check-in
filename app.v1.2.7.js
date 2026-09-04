@@ -1716,48 +1716,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 } catch(e) {}
             }, 1000);
 
-            // DUAL ENGINE: Quagga2 background scanner for 1D barcodes
+            // DUAL ENGINE: Quagga2 background scanner for 1D barcodes (student card barcodes).
+            // See startCanvasBarcodeWatcher() for why this is guarded (it used to freeze the
+            // page and cause false "invalid ticket" reports).
             if (typeof Quagga !== 'undefined' && !window.quaggaLiveInterval) {
-                const canvas = document.createElement("canvas");
-                const ctx = canvas.getContext("2d", { willReadFrequently: true });
-                
-                window.quaggaLiveInterval = setInterval(() => {
-                    if (isProcessingCheckin) return; // FIX: was undefined `isProcessing` -> threw every tick, killing 1D barcode decode
-                    const videoEl = document.querySelector("#qr-reader video");
-                    if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
-                    
-                    let w = videoEl.videoWidth, h = videoEl.videoHeight;
-                    if (w === 0 || h === 0) return;
-                    
-                    let cropW = Math.floor(w * 0.9);
-                    let cropH = Math.floor(h * 0.6);
-                    let cropX = Math.floor((w - cropW) / 2);
-                    let cropY = Math.floor((h - cropH) / 2);
-                    let targetW = Math.min(cropW, 1200);
-                    let targetH = Math.floor(cropH * (targetW / cropW));
-                    
-                    canvas.width = targetW;
-                    canvas.height = targetH;
-                    ctx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
-                    ctx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
-                    
-                    Quagga.decodeSingle({
-                        src: canvas.toDataURL("image/jpeg", 0.85),
-                        numOfWorkers: 0,
-                        inputStream: { size: targetW },
-                        decoder: {
-                            readers: ["code_128_reader","code_39_reader","code_93_reader",
-                                "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
-                                "i2of5_reader","codabar_reader"]
-                        },
-                        locate: true
-                    }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code && !isProcessingCheckin) {
-                            console.log("Quagga2:", result.codeResult.code);
-                            handleCheckIn(result.codeResult.code);
-                        }
-                    });
-                }, 250);
+                window.quaggaLiveInterval = startCanvasBarcodeWatcher("#qr-reader video", (code) => handleCheckIn(code));
             }
         }).catch(err => {
             console.error("Camera failed:", err);
@@ -2012,38 +1975,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // DUAL ENGINE: Quagga2 background scanner so each slot also reads 1D barcodes.
             if (typeof Quagga !== 'undefined' && !slotQuaggaIntervals[slotId]) {
-                const sCanvas = document.createElement("canvas");
-                const sCtx = sCanvas.getContext("2d", { willReadFrequently: true });
-                slotQuaggaIntervals[slotId] = setInterval(() => {
-                    if (isProcessingCheckin) return;
-                    const videoEl = document.querySelector(`#qr-reader-slot-${slotIndex} video`);
-                    if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
-                    let w = videoEl.videoWidth, h = videoEl.videoHeight;
-                    if (w === 0 || h === 0) return;
-                    let cropW = Math.floor(w * 0.9), cropH = Math.floor(h * 0.6);
-                    let cropX = Math.floor((w - cropW) / 2), cropY = Math.floor((h - cropH) / 2);
-                    let targetW = Math.min(cropW, 1200);
-                    let targetH = Math.floor(cropH * (targetW / cropW));
-                    sCanvas.width = targetW; sCanvas.height = targetH;
-                    sCtx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
-                    sCtx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
-                    Quagga.decodeSingle({
-                        src: sCanvas.toDataURL("image/jpeg", 0.85),
-                        numOfWorkers: 0,
-                        inputStream: { size: targetW },
-                        decoder: {
-                            readers: ["code_128_reader","code_39_reader","code_93_reader",
-                                "ean_reader","ean_8_reader","upc_reader","upc_e_reader",
-                                "i2of5_reader","codabar_reader"]
-                        },
-                        locate: true
-                    }, function(result) {
-                        if (result && result.codeResult && result.codeResult.code && !isProcessingCheckin) {
-                            console.log(`Quagga2 slot ${slotIndex}:`, result.codeResult.code);
-                            handleCheckIn(result.codeResult.code, slotId);
-                        }
-                    });
-                }, 300);
+                slotQuaggaIntervals[slotId] = startCanvasBarcodeWatcher(
+                    `#qr-reader-slot-${slotIndex} video`,
+                    (code) => handleCheckIn(code, slotId)
+                );
             }
 
             setTimeout(() => {
@@ -2229,19 +2164,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let isProcessingCheckin = false; // Lock to prevent multiple scans within 2 seconds
 
-    function handleCheckIn(qrData, slotId = null) {
-        if (isProcessingCheckin) return;
-        isProcessingCheckin = true;
-
-        // Visual flash lock delay
-        setTimeout(() => {
-            isProcessingCheckin = false;
-        }, 2500);
-
-        // QR values could be URLs containing QR content, or plain tickets like "QRCHECKIN-TIC-8801" or "TIC-8801"
+    // Pure lookup, no side effects — shared by handleCheckIn() and the background 1D
+    // barcode loops so a candidate code can be validated BEFORE deciding whether to
+    // treat it as a real scan (see startCanvasBarcodeWatcher below).
+    function findCustomerByScannedCode(qrData) {
         let ticketId = String(qrData || "").trim();
-        
-        // If the scanned data looks like a URL, try to extract data/chl parameter
+
         if (ticketId.startsWith("http://") || ticketId.startsWith("https://")) {
             try {
                 const urlObj = new URL(ticketId);
@@ -2255,8 +2183,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const cleanQrData = ticketId;
-
-        // Strip prefix case-insensitively
         if (ticketId.toUpperCase().startsWith("QRCHECKIN-")) {
             ticketId = ticketId.substring(10);
         }
@@ -2266,10 +2192,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const scannedLower = ticketId.toLowerCase();
         const cleanLower = cleanQrData.toLowerCase();
         const SKIP_MATCH_FIELDS = ["qrCode", "_rowNum", "status", "checkInTime", "checkInLocation", "checkedBy", "localCheckInAt", "_updatedThisBatch"];
-        const customer = state.customers.find(c => {
+        return state.customers.find(c => {
             if (c.id && c.id.toLowerCase() === scannedLower) return true;
             if (c.qrCode && c.qrCode.toLowerCase() === cleanLower) return true;
-            if (scannedLower.length >= 4) {
+            // Loose fallback match: require >=6 chars so a short random misread from the
+            // barcode noise-scanner (e.g. a 4-5 char false decode) can't accidentally hit
+            // a short custom field value ("VIETNAM", "CC26TEST"...) and check in the wrong
+            // person. Real MSSV/id-style codes are comfortably longer than this.
+            if (scannedLower.length >= 6) {
                 for (const k in c) {
                     if (SKIP_MATCH_FIELDS.indexOf(k) !== -1) continue;
                     const v = c[k];
@@ -2278,6 +2208,85 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             return false;
         });
+    }
+
+    // Watches a <video> element in the background for 1D barcodes (student card barcodes),
+    // alongside html5-qrcode's own QR decoding on the same feed. This used to be a plain
+    // setInterval that caused three real problems, all now fixed here:
+    //  1. SLOWNESS / PAGE FREEZE: every tick did ctx.filter + canvas.toDataURL() (a synchronous
+    //     JPEG encode) + a synchronous Quagga decode, all on the main thread, as often as every
+    //     250ms — with NO guard against a call still running when the next tick fired. On a
+    //     mid-range phone a single decode can take longer than the interval, so calls piled up
+    //     and starved the UI thread, which is what made toasts lag and the page eventually
+    //     become unresponsive (needing a reload) whether the operator was scanning or typing
+    //     into the manual check-in field.
+    //  2. FALSE "INVALID TICKET" / MISSED SCANS: Quagga has no confidence threshold, so random
+    //     background texture could decode as a bogus barcode. That code used to be sent
+    //     straight to handleCheckIn(), which (a) showed a wrong "Vé không hợp lệ" toast, and
+    //     (b) engaged the 2.5s processing lock, silently swallowing a real scan that arrived
+    //     a moment later — the "sometimes nothing happens" symptom.
+    // Fix: a `busy` flag prevents overlapping decodes, the interval is slower (500ms — barcode
+    // reading doesn't need near-realtime polling), and a decoded code is only ever passed to
+    // onMatch() if it actually matches a known customer; anything else is ignored in silence.
+    function startCanvasBarcodeWatcher(videoSelector, onMatch) {
+        if (typeof Quagga === 'undefined') return null;
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        let busy = false;
+        return setInterval(() => {
+            if (isProcessingCheckin || busy) return;
+            const videoEl = document.querySelector(videoSelector);
+            if (!videoEl || videoEl.paused || videoEl.ended || videoEl.readyState < 2) return;
+
+            const w = videoEl.videoWidth, h = videoEl.videoHeight;
+            if (w === 0 || h === 0) return;
+
+            const cropW = Math.floor(w * 0.9);
+            const cropH = Math.floor(h * 0.6);
+            const cropX = Math.floor((w - cropW) / 2);
+            const cropY = Math.floor((h - cropH) / 2);
+            const targetW = Math.min(cropW, 1000);
+            const targetH = Math.floor(cropH * (targetW / cropW));
+
+            canvas.width = targetW;
+            canvas.height = targetH;
+            ctx.filter = "contrast(160%) brightness(105%) grayscale(100%)";
+            ctx.drawImage(videoEl, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+
+            busy = true;
+            Quagga.decodeSingle({
+                src: canvas.toDataURL("image/jpeg", 0.75),
+                numOfWorkers: 0,
+                inputStream: { size: targetW },
+                decoder: {
+                    readers: ["code_128_reader", "code_39_reader", "code_93_reader",
+                        "ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader",
+                        "i2of5_reader", "codabar_reader"]
+                },
+                locate: true
+            }, function (result) {
+                busy = false;
+                if (isProcessingCheckin) return;
+                const code = result && result.codeResult && result.codeResult.code;
+                if (!code) return;
+                if (findCustomerByScannedCode(code)) {
+                    console.log("Quagga2:", code);
+                    onMatch(code);
+                }
+            });
+        }, 500);
+    }
+
+    function handleCheckIn(qrData, slotId = null) {
+        if (isProcessingCheckin) return;
+        isProcessingCheckin = true;
+
+        // Visual flash lock delay
+        setTimeout(() => {
+            isProcessingCheckin = false;
+        }, 2500);
+
+        const customer = findCustomerByScannedCode(qrData);
 
         if (!customer) {
             // ERROR: CUSTOMER NOT FOUND
@@ -2326,24 +2335,33 @@ document.addEventListener("DOMContentLoaded", () => {
         state.logs.push(logRecord);
         sessionCount++;
 
-        // Save
-        saveState("customers");
-        saveState("logs");
-
-        // Always push the check-in to Google Sheets. NOTE: postCheckInToGoogleSheets lives
-        // inside bootApp's scope, so it is reached via window.__postCheckInToSheets (set in
-        // bootApp). Calling the bare name here throws "Can't find variable".
-        if (window.__postCheckInToSheets) window.__postCheckInToSheets(customer);
-
-        // UI Feedback
+        // UI feedback FIRST — the in-memory state (customer.status, state.logs) is already
+        // updated above, so the visual result is correct immediately. Persisting to
+        // localStorage/Firebase/Sheets is deferred one tick (setTimeout 0) so the browser
+        // paints the sound/overlay/toast before doing that heavier work, instead of the
+        // notification visibly lagging behind a synchronous JSON.stringify + storage write.
+        // FIX: this used to always read customer.TruongTHPT (the old "school" field), which
+        // is undefined for the current attendee schema (Đơn vị/Chức vụ) — the toast literally
+        // showed "(undefined)" after every successful scan, which read like something went
+        // wrong even though the check-in succeeded. Use whichever unit field is populated.
+        const successUnit = getCustField(customer, CUSTOMER_EXTRA_COLS[0].keys) || customer.TruongTHPT || "";
         playNotificationSound("success");
         flashScannerOverlay("success", "Check-in thành công!", customer.HoVaTen, slotId);
-        showToast("Check-in thành công", `${customer.HoVaTen} (${customer.TruongTHPT}) tại ${location}`, "success");
-        
-        logActivity("success", "Check-in thành công", `${customer.HoVaTen} đã được quét thành công tại ${location} bởi ${currentStaff}`);
-        
+        showToast("Check-in thành công", `${customer.HoVaTen}${successUnit ? ` (${successUnit})` : ""} tại ${location}`, "success");
         renderScannedCard(customer, false);
         updateSessionCounter();
+
+        setTimeout(() => {
+            saveState("customers");
+            saveState("logs");
+
+            // Always push the check-in to Google Sheets. NOTE: postCheckInToGoogleSheets lives
+            // inside bootApp's scope, so it is reached via window.__postCheckInToSheets (set in
+            // bootApp). Calling the bare name here throws "Can't find variable".
+            if (window.__postCheckInToSheets) window.__postCheckInToSheets(customer);
+
+            logActivity("success", "Check-in thành công", `${customer.HoVaTen} đã được quét thành công tại ${location} bởi ${currentStaff}`);
+        }, 0);
     }
 
     function flashScannerOverlay(type, title, desc, slotId = null) {
