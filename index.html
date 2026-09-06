@@ -264,9 +264,9 @@
                                     <i class="ri-user-star-line"></i>
                                 </div>
                                 <div class="stat-details">
-                                    <span class="stat-label">Học Sinh Có Chứng Chỉ</span>
+                                    <span class="stat-label">Số Đơn Vị Tham Dự</span>
                                     <h3 id="stat-vip-checked" class="stat-val">0</h3>
-                                    <span class="stat-trend trend-up" id="stat-vip-ratio"><i class="ri-vip-crown-line"></i> Chứng chỉ</span>
+                                    <span class="stat-trend trend-up" id="stat-vip-ratio"><i class="ri-vip-crown-line"></i> Đơn vị</span>
                                 </div>
                             </div>
                         </div>
@@ -700,15 +700,8 @@
                             <div class="action-bar-right">
                                 <div class="search-box">
                                     <i class="ri-search-line"></i>
-                                    <input type="text" id="customer-search-input" placeholder="Tìm tên, trường, email, SĐT...">
+                                    <input type="text" id="customer-search-input" placeholder="Tìm tên, đơn vị, email, SĐT...">
                                 </div>
-                                <select id="customer-filter-type" class="form-select">
-                                    <option value="">Tất cả Chứng chỉ</option>
-                                    <option value="english">Có CC Tiếng Anh</option>
-                                    <option value="international">Có CC Tuyển Sinh QT</option>
-                                    <option value="both">Có cả hai</option>
-                                    <option value="none">Không có chứng chỉ</option>
-                                </select>
                                 <select id="customer-filter-status" class="form-select">
                                     <option value="">Tất cả Trạng thái</option>
                                     <option value="Pending">Chờ Check-in</option>
@@ -1188,7 +1181,11 @@
             <form id="customer-form" class="standard-form">
                 <input type="hidden" id="customer-form-mode" value="add">
                 <input type="hidden" id="customer-form-id" value="">
-                
+
+                <div class="form-group">
+                    <label for="c-id">Mã ID</label>
+                    <input type="text" id="c-id" placeholder="Để trống để hệ thống tự tạo, hoặc nhập mã có sẵn (VD: 2601234)">
+                </div>
                 <div class="form-group">
                     <label for="c-name">Họ và Tên</label>
                     <input type="text" id="c-name" required placeholder="Ví dụ: Nguyễn Văn B">
@@ -1547,6 +1544,6 @@
     <script src="mock-data.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-    <script src="app.v1.2.7.js?v=20260906b"></script>
+    <script src="app.v1.2.7.js?v=20260906c"></script>
 </body>
 </html>

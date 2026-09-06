@@ -1072,22 +1072,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const checkedIn = state.customers.filter(c => c.status === "Checked In").length;
         const pending = total - checkedIn;
 
-        const hasCert = cust => {
-            const english = (cust.ChungChiTiengAnh || "").trim().toLowerCase();
-            const international = (cust.ChungChiTuyenSinhQuocTe || "").trim().toLowerCase();
-            const hasEnglish = english !== "" && english !== "không" && english !== "none" && english !== "no" && english !== "n/a";
-            const hasIntl = international !== "" && international !== "không" && international !== "none" && international !== "no" && international !== "n/a";
-            return hasEnglish || hasIntl;
-        };
-
-        const certChecked = state.customers.filter(c => c.status === "Checked In" && hasCert(c)).length;
-        const certTotal = state.customers.filter(hasCert).length;
+        // FIX: this card used to track "students with a certificate" (ChungChiTiengAnh /
+        // ChungChiTuyenSinhQuocTe), a field the current schema (Đơn vị/Chức vụ/Ghi chú)
+        // doesn't have — it always showed a meaningless "0/0". Repurposed to a stat that
+        // actually reflects this schema: number of distinct Đơn vị represented.
+        const distinctUnits = new Set(
+            state.customers
+                .map(c => getCustField(c, CUSTOMER_EXTRA_COLS[0].keys))
+                .filter(v => v)
+        ).size;
 
         // Statistics Text
         document.getElementById("stat-total-customers").textContent = total;
         document.getElementById("stat-checked-in").textContent = checkedIn;
         document.getElementById("stat-pending").textContent = pending;
-        document.getElementById("stat-vip-checked").textContent = `${certChecked}/${certTotal}`;
+        document.getElementById("stat-vip-checked").textContent = distinctUnits;
 
         // Percentage calculations
         const checkPct = total > 0 ? Math.round((checkedIn / total) * 100) : 0;
@@ -1095,13 +1094,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         document.getElementById("stat-checked-percentage").innerHTML = `<i class="ri-arrow-up-s-line"></i> ${checkPct}% đã quét`;
         document.getElementById("stat-pending-percentage").innerHTML = `<i class="ri-arrow-down-s-line"></i> ${pendPct}% chưa quét`;
-
-        if (certTotal > 0) {
-            const certPct = Math.round((certChecked / certTotal) * 100);
-            document.getElementById("stat-vip-ratio").innerHTML = `<i class="ri-vip-crown-line"></i> Đã hoàn thành ${certPct}%`;
-        } else {
-            document.getElementById("stat-vip-ratio").innerHTML = `<i class="ri-vip-crown-line"></i> 0 học sinh có CC`;
-        }
+        document.getElementById("stat-vip-ratio").innerHTML = `<i class="ri-vip-crown-line"></i> Đơn vị`;
 
         // Radial Progress Arc
         const radialBar = document.getElementById("radial-progress-bar");
@@ -2754,7 +2747,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // ----------------------------------------------------------------------
     const customerTableBody = document.getElementById("customer-table-body");
     const customerSearch = document.getElementById("customer-search-input");
-    const filterType = document.getElementById("customer-filter-type");
     const filterStatus = document.getElementById("customer-filter-status");
 
     // Extra customer columns, matching the import template QR_Checkin_Mau_Import.xlsx
@@ -2775,7 +2767,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderCustomersTable() {
         const query = customerSearch.value.toLowerCase();
-        const type = filterType.value;
         const status = filterStatus.value;
 
         // General query matching across all string fields of the customer object
@@ -2785,22 +2776,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 return String(cust[key] || "").toLowerCase().includes(query);
             });
 
-            let matchType = true;
-            if (type !== "") {
-                const english = (cust.ChungChiTiengAnh || "").trim().toLowerCase();
-                const international = (cust.ChungChiTuyenSinhQuocTe || "").trim().toLowerCase();
-                const hasEnglish = english !== "" && english !== "không" && english !== "none" && english !== "no" && english !== "n/a";
-                const hasIntl = international !== "" && international !== "không" && international !== "none" && international !== "no" && international !== "n/a";
-
-                if (type === "english") matchType = hasEnglish;
-                else if (type === "international") matchType = hasIntl;
-                else if (type === "both") matchType = hasEnglish && hasIntl;
-                else if (type === "none") matchType = !hasEnglish && !hasIntl;
-            }
-
             const matchStatus = status === "" || cust.status === status;
 
-            return matchQuery && matchType && matchStatus;
+            return matchQuery && matchStatus;
         });
 
         // Set counts
@@ -2875,7 +2853,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     customerSearch.addEventListener("input", renderCustomersTable);
-    filterType.addEventListener("change", renderCustomersTable);
     filterStatus.addEventListener("change", renderCustomersTable);
 
     function bindCustomerActions() {
@@ -2931,13 +2908,22 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("customer-form-mode").value = mode;
         customerForm.reset();
 
+        const idField = document.getElementById("c-id");
+
         if (mode === "add") {
-            cModalTitle.textContent = "Thêm Học Sinh Mới";
+            cModalTitle.textContent = "Thêm Khách Hàng Mới";
             document.getElementById("customer-form-id").value = "";
-            document.getElementById("btn-submit-customer-modal").textContent = "Thêm Học Sinh";
+            idField.value = "";
+            idField.readOnly = false;
+            idField.placeholder = "Để trống để hệ thống tự tạo, hoặc nhập mã có sẵn (VD: 2601234)";
+            document.getElementById("btn-submit-customer-modal").textContent = "Thêm Khách Hàng";
         } else {
-            cModalTitle.textContent = "Cập Nhật Học Sinh";
+            cModalTitle.textContent = "Cập Nhật Khách Hàng";
             document.getElementById("customer-form-id").value = cust.id;
+            // Mã ID is not editable once a customer exists — changing it would break the
+            // customer's QR code, existing check-in logs, and the Google Sheet row lookup.
+            idField.value = cust.id;
+            idField.readOnly = true;
             document.getElementById("c-name").value = cust.HoVaTen;
             document.getElementById("c-phone").value = cust.SoDienThoai;
             document.getElementById("c-email").value = cust.Email;
@@ -2961,6 +2947,7 @@ document.addEventListener("DOMContentLoaded", () => {
     customerForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const mode = document.getElementById("customer-form-mode").value;
+        const InputId = document.getElementById("c-id").value.trim();
         const HoVaTen = document.getElementById("c-name").value.trim();
         const SoDienThoai = document.getElementById("c-phone").value.trim();
         const Email = document.getElementById("c-email").value.trim();
@@ -2969,16 +2956,23 @@ document.addEventListener("DOMContentLoaded", () => {
         const Ghichu = document.getElementById("c-activity-exp").value.trim();
 
         if (mode === "add") {
-            // Generate ticket ID (deterministic)
-            const ticketId = generateDeterministicId(HoVaTen, SoDienThoai, Email, false);
+            // Use the Mã ID the operator typed in (must match the scheme used elsewhere —
+            // e.g. an already-imported MSSV list — so this person's card/QR lines up with
+            // Google Sheets and any barcode scanning). Falls back to an auto-generated id
+            // when left blank, same as before.
+            const ticketId = InputId !== "" ? InputId : generateDeterministicId(HoVaTen, SoDienThoai, Email, false);
 
-            // Check if student already exists in the system
+            // Check if this customer already exists in the system
             const isDuplicate = state.customers.some(c => c.id === ticketId);
             if (isDuplicate) {
-                showToast("Lỗi tạo học sinh", "Học sinh này đã tồn tại trong hệ thống (trùng Tên, SĐT hoặc Email).", "warning");
+                showToast("Lỗi tạo khách hàng",
+                    InputId !== ""
+                        ? `Mã ID "${ticketId}" đã tồn tại trong hệ thống. Vui lòng nhập một mã khác.`
+                        : "Khách hàng này đã tồn tại trong hệ thống (trùng Tên, SĐT hoặc Email).",
+                    "warning");
                 return;
             }
-            
+
             const newCust = {
                 id: ticketId,
                 HoVaTen,
@@ -3626,37 +3620,23 @@ document.addEventListener("DOMContentLoaded", () => {
     // Export customer list with QR codes for Mail Merge
     document.getElementById("btn-export-customers").addEventListener("click", () => {
         const query = customerSearch.value.toLowerCase();
-        const type = filterType.value;
         const status = filterStatus.value;
 
         // Perform the filter matching Excel rows
         let filtered = state.customers.filter(cust => {
-            const matchQuery = (cust.HoVaTen || "").toLowerCase().includes(query) || 
-                               (cust.Email || "").toLowerCase().includes(query) || 
-                               (cust.SoDienThoai || "").includes(query) || 
+            const matchQuery = (cust.HoVaTen || "").toLowerCase().includes(query) ||
+                               (cust.Email || "").toLowerCase().includes(query) ||
+                               (cust.SoDienThoai || "").includes(query) ||
                                cust.id.toLowerCase().includes(query) ||
-                               (cust.TruongTHPT || "").toLowerCase().includes(query);
-                               
-            let matchType = true;
-            if (type !== "") {
-                const english = (cust.ChungChiTiengAnh || "").trim().toLowerCase();
-                const international = (cust.ChungChiTuyenSinhQuocTe || "").trim().toLowerCase();
-                const hasEnglish = english !== "" && english !== "không" && english !== "none" && english !== "no" && english !== "n/a";
-                const hasIntl = international !== "" && international !== "không" && international !== "none" && international !== "no" && international !== "n/a";
-                
-                if (type === "english") matchType = hasEnglish;
-                else if (type === "international") matchType = hasIntl;
-                else if (type === "both") matchType = hasEnglish && hasIntl;
-                else if (type === "none") matchType = !hasEnglish && !hasIntl;
-            }
-            
+                               getCustField(cust, CUSTOMER_EXTRA_COLS[0].keys).toLowerCase().includes(query);
+
             const matchStatus = status === "" || cust.status === status;
 
-            return matchQuery && matchType && matchStatus;
+            return matchQuery && matchStatus;
         });
 
         if (filtered.length === 0) {
-            showToast("Xuất danh sách lỗi", "Không có dữ liệu học sinh để xuất.", "warning");
+            showToast("Xuất danh sách lỗi", "Không có dữ liệu khách hàng để xuất.", "warning");
             return;
         }
 
@@ -3712,11 +3692,11 @@ document.addEventListener("DOMContentLoaded", () => {
             ws['!cols'] = colWidths;
 
             const dateStr = new Date().toISOString().split('T')[0];
-            XLSX.writeFile(wb, `Danh_Sach_Hoc_Sinh_QR_${dateStr}.xlsx`);
+            XLSX.writeFile(wb, `Danh_Sach_Khach_Hang_QR_${dateStr}.xlsx`);
             
-            showToast("Xuất Excel", `Đã xuất danh sách ${filtered.length} học sinh kèm mã QR thành công.`, "success");
+            showToast("Xuất Excel", `Đã xuất danh sách ${filtered.length} khách hàng kèm mã QR thành công.`, "success");
             playNotificationSound("success");
-            logActivity("info", "Xuất Excel Học Sinh", `Nhân viên đã xuất danh sách ${filtered.length} học sinh để làm Mail Merge.`);
+            logActivity("info", "Xuất Excel Khách Hàng", `Nhân viên đã xuất danh sách ${filtered.length} khách hàng để làm Mail Merge.`);
         } catch (err) {
             console.error("Export Excel customers failed:", err);
             showToast("Xuất Excel thất bại", "Có lỗi xảy ra trong quá trình tạo file Excel.", "error");
@@ -3726,42 +3706,28 @@ document.addEventListener("DOMContentLoaded", () => {
     // ZIP QR Codes Download click event
     document.getElementById("btn-download-qr-zip").addEventListener("click", async () => {
         const query = customerSearch.value.toLowerCase();
-        const type = filterType.value;
         const status = filterStatus.value;
 
         // Filter just like the table
         let filtered = state.customers.filter(cust => {
-            const matchQuery = (cust.HoVaTen || "").toLowerCase().includes(query) || 
-                               (cust.Email || "").toLowerCase().includes(query) || 
-                               (cust.SoDienThoai || "").includes(query) || 
+            const matchQuery = (cust.HoVaTen || "").toLowerCase().includes(query) ||
+                               (cust.Email || "").toLowerCase().includes(query) ||
+                               (cust.SoDienThoai || "").includes(query) ||
                                cust.id.toLowerCase().includes(query) ||
-                               (cust.TruongTHPT || "").toLowerCase().includes(query);
-                               
-            let matchType = true;
-            if (type !== "") {
-                const english = (cust.ChungChiTiengAnh || "").trim().toLowerCase();
-                const international = (cust.ChungChiTuyenSinhQuocTe || "").trim().toLowerCase();
-                const hasEnglish = english !== "" && english !== "không" && english !== "none" && english !== "no" && english !== "n/a";
-                const hasIntl = international !== "" && international !== "không" && international !== "none" && international !== "no" && international !== "n/a";
-                
-                if (type === "english") matchType = hasEnglish;
-                else if (type === "international") matchType = hasIntl;
-                else if (type === "both") matchType = hasEnglish && hasIntl;
-                else if (type === "none") matchType = !hasEnglish && !hasIntl;
-            }
-            
+                               getCustField(cust, CUSTOMER_EXTRA_COLS[0].keys).toLowerCase().includes(query);
+
             const matchStatus = status === "" || cust.status === status;
 
-            return matchQuery && matchType && matchStatus;
+            return matchQuery && matchStatus;
         });
 
         if (filtered.length === 0) {
-            showToast("Tải ZIP thất bại", "Không có học sinh nào trong danh sách để tạo mã QR.", "warning");
+            showToast("Tải ZIP thất bại", "Không có khách hàng nào trong danh sách để tạo mã QR.", "warning");
             return;
         }
 
         // Show a loading toast
-        showToast("Đang tạo file ZIP", `Đang vẽ và nén mã QR cho ${filtered.length} học sinh, vui lòng đợi...`, "info");
+        showToast("Đang tạo file ZIP", `Đang vẽ và nén mã QR cho ${filtered.length} khách hàng, vui lòng đợi...`, "info");
         
         try {
             const zip = new JSZip();
@@ -3795,7 +3761,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             showToast("Tải ZIP thành công", `Đã tải về file ZIP chứa ${filtered.length} ảnh mã QR.`, "success");
             playNotificationSound("success");
-            logActivity("info", "Tải ZIP mã QR", `Nhân viên đã tải về file ZIP chứa mã QR của ${filtered.length} học sinh.`);
+            logActivity("info", "Tải ZIP mã QR", `Nhân viên đã tải về file ZIP chứa mã QR của ${filtered.length} khách hàng.`);
         } catch (err) {
             console.error("Zipping QR codes failed:", err);
             showToast("Lỗi nén ZIP", "Không thể nén và tạo tệp ZIP chứa ảnh mã QR.", "error");
@@ -3908,7 +3874,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (cust) {
                         sendEmailAsync(email, cust);
                     } else {
-                        showToast("Lỗi", "Không tìm thấy thông tin học sinh.", "error");
+                        showToast("Lỗi", "Không tìm thấy thông tin khách hàng.", "error");
                     }
                 }
             });
