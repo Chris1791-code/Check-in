@@ -310,6 +310,18 @@ document.addEventListener("DOMContentLoaded", () => {
         let mergedCount = 0;
         const keepers = [];
 
+        // This function runs on EVERY device at EVERY page load (via initStorage), so its
+        // Firebase write must never be a blind full-array overwrite — a device reloading with
+        // a slightly stale local copy would otherwise silently erase other devices' concurrent
+        // check-ins the moment it happens to find any duplicate. Track exactly what changes
+        // (which keeper absorbed a merge, which records get dropped, which log/email rows had
+        // their customerId repointed) and patch only those via a transaction at the end.
+        const originalIdOf = new Map(); // keeper object -> its id before any merge this pass
+        const touchedKeepers = new Set();
+        const removedCustomerIds = [];
+        const logPatchesById = {};
+        const emailPatchesById = {};
+
         state.customers.forEach(cust => {
             const normEmail = cust.Email ? cust.Email.trim().toLowerCase() : "";
             const normPhone = normalizePhone(cust.SoDienThoai);
@@ -326,6 +338,9 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             if (duplicate) {
+                touchedKeepers.add(duplicate);
+                removedCustomerIds.push(cust.id);
+
                 // Merge cust into duplicate (keeper)
                 // 1. Check-in status
                 if (cust.status === "Checked In") {
@@ -386,6 +401,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (log.customerId === oldKeeperId || log.customerId === cust.id) {
                             log.customerId = duplicate.id;
                             log.customerName = duplicate.HoVaTen;
+                            logPatchesById[log.id] = { customerId: duplicate.id, customerName: duplicate.HoVaTen };
                         }
                     });
 
@@ -395,6 +411,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             email.customerId = duplicate.id;
                             email.customerName = duplicate.HoVaTen;
                             email.customerEmail = duplicate.Email;
+                            emailPatchesById[email.id] = { customerId: duplicate.id, customerName: duplicate.HoVaTen, customerEmail: duplicate.Email };
                         }
                     });
                 } else {
@@ -403,6 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (log.customerId === cust.id) {
                             log.customerId = duplicate.id;
                             log.customerName = duplicate.HoVaTen;
+                            logPatchesById[log.id] = { customerId: duplicate.id, customerName: duplicate.HoVaTen };
                         }
                     });
 
@@ -412,21 +430,36 @@ document.addEventListener("DOMContentLoaded", () => {
                             email.customerId = duplicate.id;
                             email.customerName = duplicate.HoVaTen;
                             email.customerEmail = duplicate.Email;
+                            emailPatchesById[email.id] = { customerId: duplicate.id, customerName: duplicate.HoVaTen, customerEmail: duplicate.Email };
                         }
                     });
                 }
 
                 mergedCount++;
             } else {
+                originalIdOf.set(cust, cust.id);
                 keepers.push(cust);
             }
         });
 
         if (mergedCount > 0) {
             state.customers = keepers;
-            saveState("customers");
-            saveState("logs");
-            saveState("emails");
+            // Persist locally, then patch ONLY the records this pass actually touched on the
+            // server (dropped duplicates, the keeper each absorbed into, and any log/email rows
+            // that got re-pointed) — never overwrite the whole arrays. See firebaseApplyArrayOps.
+            saveState("customers", { skipFirebase: true });
+            saveState("logs", { skipFirebase: true });
+            saveState("emails", { skipFirebase: true });
+
+            const customerPatches = {};
+            touchedKeepers.forEach(k => {
+                const origId = originalIdOf.get(k);
+                if (origId != null) customerPatches[origId] = Object.assign({}, k);
+            });
+            firebaseApplyArrayOps('event_data/customers', 'id', { patches: customerPatches, removeIds: removedCustomerIds });
+            firebaseApplyArrayOps('event_data/logs', 'id', { patches: logPatchesById });
+            firebaseApplyArrayOps('event_data/emails', 'id', { patches: emailPatchesById });
+
             console.log(`Database auto-deduplication: merged ${mergedCount} duplicate customer records.`);
         }
     }
@@ -480,6 +513,39 @@ document.addEventListener("DOMContentLoaded", () => {
             return logs;
         }, function (error) {
             if (error) console.error("Firebase logs transaction failed:", error);
+        });
+    }
+
+    // General-purpose version of the above: patch existing records (by their own id field),
+    // append new ones, and/or remove some — all in ONE Firebase transaction, so only the
+    // records this pass actually decided to change are touched. Used by anything that can
+    // both add AND remove/rewrite entries (dedup merges, admin add/edit/delete), which the
+    // two simpler helpers above don't cover.
+    function firebaseApplyArrayOps(path, idField, ops) {
+        if (!db) return;
+        const patches = (ops && ops.patches) || {};
+        const adds = (ops && ops.adds) || [];
+        const removeIds = new Set(((ops && ops.removeIds) || []).map(String));
+        const removeIf = ops && ops.removeIf; // optional (item) => boolean, e.g. by a field other than idField
+        const patchIds = Object.keys(patches);
+        if (patchIds.length === 0 && adds.length === 0 && removeIds.size === 0 && !removeIf) return;
+        db.ref(path).transaction(function (arr) {
+            if (!Array.isArray(arr)) arr = [];
+            let result = arr.filter(item => !(item && removeIds.has(String(item[idField]))) && !(removeIf && item && removeIf(item)));
+            const byId = {};
+            result.forEach((item, i) => { if (item && item[idField] != null) byId[String(item[idField])] = i; });
+            patchIds.forEach(id => {
+                const idx = byId[id];
+                if (idx !== undefined) result[idx] = Object.assign({}, result[idx], patches[id]);
+            });
+            adds.forEach(item => {
+                if (item && item[idField] != null && byId[String(item[idField])] === undefined) {
+                    result.push(item);
+                }
+            });
+            return result;
+        }, function (error) {
+            if (error) console.error("Firebase " + path + " ops transaction failed:", error);
         });
     }
 
@@ -2840,11 +2906,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (confirm(`Bạn có chắc chắn muốn xóa khách hàng "${state.customers[idx].name}"?`)) {
                         const name = state.customers[idx].name;
                         state.customers.splice(idx, 1);
-                        saveState("customers");
-                        
+                        saveState("customers", { skipFirebase: true });
+                        firebaseApplyArrayOps('event_data/customers', 'id', { removeIds: [id] });
+
                         // Also remove logs relating to this customer
                         state.logs = state.logs.filter(l => l.customerId !== id);
-                        saveState("logs");
+                        saveState("logs", { skipFirebase: true });
+                        firebaseApplyArrayOps('event_data/logs', 'id', { removeIf: l => l.customerId === id });
 
                         showToast("Đã xóa", `Đã xóa thành công khách hàng "${name}".`, "info");
                         renderCustomersTable();
@@ -2927,8 +2995,9 @@ document.addEventListener("DOMContentLoaded", () => {
             };
 
             state.customers.push(newCust);
-            saveState("customers");
-            
+            saveState("customers", { skipFirebase: true });
+            firebaseApplyArrayOps('event_data/customers', 'id', { adds: [newCust] });
+
             // Sync with Google Sheets in background if enabled
             if (state.settings.sheets && state.settings.sheets.enabled && state.settings.sheets.scriptUrl) {
                 postNewCustomerToGoogleSheets(newCust);
@@ -2949,7 +3018,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 cust.Chucvu = Chucvu;
                 cust.Ghichu = Ghichu;
 
-                saveState("customers");
+                saveState("customers", { skipFirebase: true });
+                firebaseApplyArrayOps('event_data/customers', 'id', { patches: { [id]: Object.assign({}, cust) } });
                 showToast("Cập nhật thành công", `Đã sửa đổi thông tin cho khách hàng "${HoVaTen}".`, "success");
                 logActivity("info", "Cập nhật thông tin", `Sửa đổi thông tin khách hàng ${HoVaTen} (${id})`);
             }
@@ -3167,6 +3237,13 @@ document.addEventListener("DOMContentLoaded", () => {
         let updateCount = 0;
         let totalRowsProcessed = 0;
         const tempImported = [];
+        // Track exactly what this import pass changes, so the Firebase write patches only
+        // those specific records (see firebaseApplyArrayOps) instead of overwriting the whole
+        // customers/logs arrays — importing a new batch mid-event must not erase check-ins
+        // other devices are writing concurrently.
+        const importedNewCustomers = [];
+        const importedTouchedIds = new Set();
+        const importedNewLogs = [];
 
         state.currentImportRows.forEach(row => {
             const HoVaTen = nameCol ? String(row[nameCol] || "").trim() : "";
@@ -3217,6 +3294,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (existing) {
+                importedTouchedIds.add(existing.id);
                 // MERGE VALUES
                 if (isPlaceholder(existing.SoDienThoai) && !isPlaceholder(SoDienThoai)) {
                     existing.SoDienThoai = SoDienThoai;
@@ -3271,6 +3349,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             checkedBy: existing.checkedBy
                         };
                         state.logs.push(logRecord);
+                        importedNewLogs.push(logRecord);
                     }
                 }
 
@@ -3321,6 +3400,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 state.customers.push(newCust);
                 tempImported.push(newCust);
+                importedNewCustomers.push(newCust);
                 newCount++;
 
                 if (status === "Checked In") {
@@ -3333,6 +3413,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         checkedBy: checkedBy
                     };
                     state.logs.push(logRecord);
+                    importedNewLogs.push(logRecord);
                 } else {
                     queueSimulatedEmail(newCust);
                 }
@@ -3345,9 +3426,21 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         if (newCount > 0 || updateCount > 0) {
-            saveState("customers");
-            saveState("logs");
-            saveState("emails");
+            // Persist locally, then patch only the customers actually touched this pass +
+            // append only the new logs/customers this pass created — never overwrite the
+            // whole arrays (see firebaseApplyArrayOps / firebaseAppendLogs). A big import can
+            // run mid-event while other devices are actively checking people in.
+            saveState("customers", { skipFirebase: true });
+            saveState("logs", { skipFirebase: true });
+            saveState("emails"); // outbox is simulated/non-critical; plain overwrite is fine here
+
+            const importPatches = {};
+            importedTouchedIds.forEach(id => {
+                const c = state.customers.find(x => x.id === id);
+                if (c) importPatches[id] = Object.assign({}, c);
+            });
+            firebaseApplyArrayOps('event_data/customers', 'id', { patches: importPatches, adds: importedNewCustomers });
+            firebaseAppendLogs(importedNewLogs);
 
             showToast("Nhập dữ liệu thành công", `Đọc ${totalRowsProcessed} dòng → thêm mới ${newCount}, gộp vào người có sẵn ${updateCount}. Tổng danh sách: ${state.customers.length} người.`, "success");
             playNotificationSound("success");
