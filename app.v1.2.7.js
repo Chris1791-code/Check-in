@@ -431,7 +431,60 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    async function saveState(key) {
+    // ROOT CAUSE of check-in counts drifting from the Google Sheet (found 2026-09-06):
+    // saveState("customers"/"logs") used to do a blind db.ref(path).set(val) with this
+    // device's ENTIRE in-memory array. During a live event with several staff phones
+    // scanning at once, whichever device wrote last would silently replace the whole
+    // server array with its own (often slightly stale) copy, wiping out check-ins other
+    // devices had written moments earlier. Google Sheets stayed correct because every scan
+    // also POSTs there directly and independently — only the app's own database drifted.
+    // Fix: patch only the specific record(s) that actually changed, via a Firebase
+    // transaction (which re-reads the live server value and retries automatically on
+    // conflict), so concurrent devices can never clobber each other's writes.
+    function firebaseMergeCustomerPatches(patchesById, newCustomers) {
+        if (!db) return;
+        const ids = Object.keys(patchesById || {});
+        if (ids.length === 0 && (!newCustomers || newCustomers.length === 0)) return;
+        db.ref('event_data/customers').transaction(function (customers) {
+            if (!Array.isArray(customers)) customers = [];
+            const byId = {};
+            customers.forEach((c, i) => { if (c && c.id != null) byId[String(c.id)] = i; });
+            ids.forEach(id => {
+                const idx = byId[id];
+                if (idx !== undefined) {
+                    customers[idx] = Object.assign({}, customers[idx], patchesById[id]);
+                }
+            });
+            (newCustomers || []).forEach(nc => {
+                if (nc && nc.id != null && byId[String(nc.id)] === undefined) {
+                    customers.push(nc);
+                }
+            });
+            return customers;
+        }, function (error) {
+            if (error) console.error("Firebase customers transaction failed:", error);
+        });
+    }
+
+    function firebaseAppendLogs(newLogs) {
+        if (!db || !newLogs || newLogs.length === 0) return;
+        db.ref('event_data/logs').transaction(function (logs) {
+            if (!Array.isArray(logs)) logs = [];
+            const existingIds = new Set(logs.filter(l => l && l.id != null).map(l => String(l.id)));
+            newLogs.forEach(l => {
+                if (l && l.id != null && !existingIds.has(String(l.id))) {
+                    logs.push(l);
+                    existingIds.add(String(l.id));
+                }
+            });
+            return logs;
+        }, function (error) {
+            if (error) console.error("Firebase logs transaction failed:", error);
+        });
+    }
+
+    async function saveState(key, opts) {
+        const skipFirebase = opts && opts.skipFirebase;
         let storageKey = "";
         let val = null;
         if (key === "customers") { storageKey = "qr_customers"; val = state.customers; }
@@ -455,7 +508,12 @@ document.addEventListener("DOMContentLoaded", () => {
                         "error");
                 }
             }
-            if (db) {
+            // NOTE: customers/logs are persisted to Firebase via the targeted transaction
+            // helpers above (called by handleCheckIn / syncWithGoogleSheets), NOT here, to
+            // avoid the whole-array overwrite race described above. Callers pass
+            // { skipFirebase: true } for those two keys. Other keys (settings, users,
+            // emails, activityFeed) are single-writer-ish enough that a plain set() is fine.
+            if (db && !skipFirebase) {
                 db.ref('event_data/' + key).set(val).catch(e => console.error("Firebase sync error", e));
             }
         }
@@ -2352,8 +2410,20 @@ document.addEventListener("DOMContentLoaded", () => {
         updateSessionCounter();
 
         setTimeout(() => {
-            saveState("customers");
-            saveState("logs");
+            // Persist locally, but skip the whole-array Firebase set() — see
+            // firebaseMergeCustomerPatches/firebaseAppendLogs above for why.
+            saveState("customers", { skipFirebase: true });
+            saveState("logs", { skipFirebase: true });
+            firebaseMergeCustomerPatches({
+                [customer.id]: {
+                    status: customer.status,
+                    checkInTime: customer.checkInTime,
+                    checkInLocation: customer.checkInLocation,
+                    checkedBy: customer.checkedBy,
+                    localCheckInAt: customer.localCheckInAt
+                }
+            });
+            firebaseAppendLogs([logRecord]);
 
             // Always push the check-in to Google Sheets. NOTE: postCheckInToGoogleSheets lives
             // inside bootApp's scope, so it is reached via window.__postCheckInToSheets (set in
@@ -2580,9 +2650,13 @@ document.addEventListener("DOMContentLoaded", () => {
         state.logs.push(logRecord);
         sessionCount++;
 
-        // Save State
-        saveState("customers");
-        saveState("logs");
+        // Save State — append-only via the same conflict-safe transactions used by
+        // handleCheckIn, so two staff registering walk-ins at the same moment on different
+        // devices can't clobber each other (see firebaseMergeCustomerPatches above).
+        saveState("customers", { skipFirebase: true });
+        saveState("logs", { skipFirebase: true });
+        firebaseMergeCustomerPatches({}, [newCust]);
+        firebaseAppendLogs([logRecord]);
 
         if (state.settings.sheets && state.settings.sheets.enabled && state.settings.sheets.scriptUrl) {
             postNewCustomerToGoogleSheets(newCust);
@@ -4911,6 +4985,13 @@ function doPost(e) {
             let localUpdated = false;
             const tempCustomers = [...state.customers];
             const sheetIds = new Set(); // every ticketId currently present on the sheet
+            // Track exactly which existing customers changed and which log/customer records
+            // are brand new during THIS pass, so the Firebase write at the end can patch only
+            // those specific records (see firebaseMergeCustomerPatches) instead of overwriting
+            // the whole customers/logs arrays and clobbering other devices' concurrent writes.
+            const touchedCustomerIds = new Set();
+            const newCustomersThisPass = [];
+            const newLogsThisPass = [];
 
             sheetRows.forEach(row => {
                 const HoVaTen = nameCol ? String(row[nameCol] || "").trim() : "";
@@ -4942,16 +5023,19 @@ function doPost(e) {
 
                         const logExists = state.logs.some(l => l.customerId === localCust.id);
                         if (!logExists) {
-                            state.logs.push({
+                            const newLog = {
                                 id: "log-" + Date.now() + Math.random().toString(36).substr(2, 4),
                                 customerId: localCust.id,
                                 customerName: localCust.HoVaTen,
                                 checkInTime: localCust.checkInTime,
                                 location: localCust.checkInLocation,
                                 checkedBy: localCust.checkedBy
-                            });
+                            };
+                            state.logs.push(newLog);
+                            newLogsThisPass.push(newLog);
                         }
                         localUpdated = true;
+                        touchedCustomerIds.add(localCust.id);
                         showToast("Đồng bộ check-in", `Khách "${localCust.HoVaTen}" được check-in từ thiết bị khác.`, "info");
                     } else if (!isSheetCheckedIn && localCust.status === "Checked In") {
                         // Local has a check-in the sheet doesn't yet -> push it.
@@ -4961,15 +5045,16 @@ function doPost(e) {
                         postCheckInToGoogleSheets(localCust);
                     }
 
-                    if (localCust.HoVaTen !== HoVaTen) { localCust.HoVaTen = HoVaTen; localUpdated = true; }
-                    if (localCust.SoDienThoai !== SoDienThoai) { localCust.SoDienThoai = SoDienThoai; localUpdated = true; }
-                    if (localCust.Email !== Email) { localCust.Email = Email; localUpdated = true; }
+                    if (localCust.HoVaTen !== HoVaTen) { localCust.HoVaTen = HoVaTen; localUpdated = true; touchedCustomerIds.add(localCust.id); }
+                    if (localCust.SoDienThoai !== SoDienThoai) { localCust.SoDienThoai = SoDienThoai; localUpdated = true; touchedCustomerIds.add(localCust.id); }
+                    if (localCust.Email !== Email) { localCust.Email = Email; localUpdated = true; touchedCustomerIds.add(localCust.id); }
 
                     headers.forEach(h => {
                         if (h !== nameCol && h !== phoneCol && h !== emailCol && h !== idCol && h !== statusHeader && h !== timeHeader && h !== locationHeader && h !== staffHeader) {
                             if (row[h] !== undefined && row[h] !== null && localCust[h] !== String(row[h]).trim()) {
                                 localCust[h] = String(row[h]).trim();
                                 localUpdated = true;
+                                touchedCustomerIds.add(localCust.id);
                             }
                         }
                     });
@@ -4996,16 +5081,19 @@ function doPost(e) {
                     });
 
                     state.customers.push(newCust);
+                    newCustomersThisPass.push(newCust);
 
                     if (isSheetCheckedIn) {
-                        state.logs.push({
+                        const newLog = {
                             id: "log-" + Date.now() + Math.random().toString(36).substr(2, 4),
                             customerId: newCust.id,
                             customerName: newCust.HoVaTen,
                             checkInTime: newCust.checkInTime,
                             location: newCust.checkInLocation,
                             checkedBy: newCust.checkedBy
-                        });
+                        };
+                        state.logs.push(newLog);
+                        newLogsThisPass.push(newLog);
                     }
                     localUpdated = true;
                 }
@@ -5019,21 +5107,36 @@ function doPost(e) {
             // every Checked-In customer must have a matching log row.
             state.customers.forEach(c => {
                 if (c.status === "Checked In" && c.id && !state.logs.some(l => l.customerId === c.id)) {
-                    state.logs.push({
+                    const recoveredLog = {
                         id: "log-" + Date.now() + Math.random().toString(36).substr(2, 4),
                         customerId: c.id,
                         customerName: c.HoVaTen,
                         checkInTime: c.checkInTime || new Date().toISOString(),
                         location: c.checkInLocation || "Lối vào",
                         checkedBy: c.checkedBy || "Nhân viên"
-                    });
+                    };
+                    state.logs.push(recoveredLog);
+                    newLogsThisPass.push(recoveredLog);
                     localUpdated = true;
                 }
             });
 
             if (localUpdated) {
-                saveState("customers");
-                saveState("logs");
+                // Persist locally, then patch ONLY the customers/logs that actually changed in
+                // this pass onto the server (see firebaseMergeCustomerPatches at the top of the
+                // file) — never overwrite the whole arrays, which is what used to let one
+                // device's sync pass silently erase another device's concurrent check-ins.
+                saveState("customers", { skipFirebase: true });
+                saveState("logs", { skipFirebase: true });
+
+                const patches = {};
+                touchedCustomerIds.forEach(id => {
+                    const c = state.customers.find(x => x.id === id);
+                    if (c) patches[id] = Object.assign({}, c);
+                });
+                firebaseMergeCustomerPatches(patches, newCustomersThisPass);
+                firebaseAppendLogs(newLogsThisPass);
+
                 renderCustomersTable();
                 renderDashboard();
                 if (state.currentView === "history") { renderHistoryTable(); }
